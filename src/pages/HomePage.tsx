@@ -2,24 +2,32 @@ import { useEffect, useState } from "react";
 import { Panel } from "@/components/Panel";
 import { architectureTracks, milestonePlan, mvpFeatures } from "@/constants/projectPlan";
 import { loadBrandCodeMap, summarizeBrandCoverage } from "@/core/palette/brandCodeMap";
+import { loadColorSystemMapping } from "@/core/palette/colorSystemMapping";
 import type { BrandCodeMap, BrandCoverageSummary } from "@/types/palette";
 
 export function HomePage() {
   const [map, setMap] = useState<BrandCodeMap | null>(null);
   const [coverage, setCoverage] = useState<BrandCoverageSummary[]>([]);
+  const [rgbSeedCount, setRgbSeedCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
 
-    loadBrandCodeMap()
-      .then((loadedMap) => {
+    Promise.all([loadBrandCodeMap(), loadColorSystemMapping()])
+      .then(([loadedMap, colorSystemMapping]) => {
         if (!active) {
           return;
         }
 
         setMap(loadedMap);
         setCoverage(summarizeBrandCoverage(loadedMap));
+
+        const totalSeeds = Array.from(colorSystemMapping.values()).reduce(
+          (sum, paletteColors) => sum + paletteColors.length,
+          0,
+        );
+        setRgbSeedCount(totalSeeds);
       })
       .catch((loadError: unknown) => {
         if (!active) {
@@ -39,7 +47,7 @@ export function HomePage() {
       <div className="layout">
         <div className="stack">
           <section className="panel hero">
-            <span className="eyebrow">BeadGrid / MVP kickoff</span>
+            <span className="eyebrow">BeadGrid / 启动阶段</span>
             <h1>拼豆底稿生成器的第一阶段已经落地。</h1>
             <p className="lede">
               当前版本先把项目骨架、色号映射数据入口、颜色数学基座和测试回路建起来。这样后续接图片采样、
@@ -55,13 +63,13 @@ export function HomePage() {
                 <span>当前识别到的品牌列</span>
               </div>
               <div className="pill">
-                <strong className="status-warn">RGB 待补齐</strong>
-                <span>现有 CSV 只是跨品牌色号映射表</span>
+                <strong>{rgbSeedCount ?? "--"}</strong>
+                <span>已识别的 RGB 种子色条目</span>
               </div>
             </div>
           </section>
 
-          <Panel title="MVP 功能清单" eyebrow="Scope">
+          <Panel title="MVP 功能清单" eyebrow="范围">
             <ul className="bullet-list">
               {mvpFeatures.map((feature) => (
                 <li key={feature}>{feature}</li>
@@ -69,7 +77,7 @@ export function HomePage() {
             </ul>
           </Panel>
 
-          <Panel title="项目结构与职责" eyebrow="Architecture">
+          <Panel title="项目结构与职责" eyebrow="架构">
             <div className="code-grid">
               {architectureTracks.map((track) => (
                 <article key={track.label} className="code-card">
@@ -82,7 +90,7 @@ export function HomePage() {
         </div>
 
         <div className="stack">
-          <Panel title="数据接入状态" eyebrow="Palette seed">
+          <Panel title="数据接入状态" eyebrow="色板资源">
             {error ? <div className="error-box">{error}</div> : null}
             <div className="metric-grid">
               <div className="metric">
@@ -94,8 +102,8 @@ export function HomePage() {
                 <span>标准色号行</span>
               </div>
               <div className="metric">
-                <strong className="status-warn">缺 RGB</strong>
-                <span>不能直接做生产级匹配</span>
+                <strong>{rgbSeedCount ?? "--"}</strong>
+                <span>RGB 映射种子条目</span>
               </div>
             </div>
             <div className="table-wrap" style={{ marginTop: "14px" }}>
@@ -124,7 +132,7 @@ export function HomePage() {
             </div>
           </Panel>
 
-          <Panel title="里程碑计划" eyebrow="Roadmap">
+          <Panel title="里程碑计划" eyebrow="路线">
             <ol className="milestone-list">
               {milestonePlan.map((item) => (
                 <li key={item.title} className="milestone-item">
@@ -139,4 +147,3 @@ export function HomePage() {
     </main>
   );
 }
-
