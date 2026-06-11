@@ -2,6 +2,7 @@ import { deltaE00 } from "@/core/color/ciede2000";
 import type { CleanupLevel } from "@/types/image";
 import type { PatternCell } from "@/types/pattern";
 import type { PaletteColor } from "@/types/palette";
+import { throwIfPatternGenerationAborted } from "@/types/patternGeneration";
 
 interface CleanupConfig {
   minRegionSize: number;
@@ -42,15 +43,22 @@ export function cleanupPatternCells(
   height: number,
   cells: PatternCell[],
   level: CleanupLevel,
+  options: {
+    onProgress?: (progress: number) => void;
+    shouldAbort?: () => boolean;
+  } = {},
 ) {
   const config = cleanupConfigs[level];
   if (config.maxIterations === 0 || config.minRegionSize <= 1) {
+    options.onProgress?.(1);
     return cells;
   }
 
   const nextCells = [...cells];
 
   for (let iteration = 0; iteration < config.maxIterations; iteration += 1) {
+    throwIfPatternGenerationAborted(options.shouldAbort);
+
     let changed = false;
     const visited = new Array(nextCells.length).fill(false);
 
@@ -149,9 +157,13 @@ export function cleanupPatternCells(
     }
 
     if (!changed) {
+      options.onProgress?.(1);
       break;
     }
+
+    options.onProgress?.((iteration + 1) / config.maxIterations);
   }
 
+  options.onProgress?.(1);
   return nextCells;
 }

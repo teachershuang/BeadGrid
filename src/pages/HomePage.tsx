@@ -1,10 +1,16 @@
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { Panel } from "@/components/Panel";
 import { PatternPreviewCanvas } from "@/components/PatternPreviewCanvas";
 import { SourcePreviewCanvas } from "@/components/SourcePreviewCanvas";
 import demoSampleImageUrl from "@/assets/mvp-sample.png";
+import {
+  exportBoardSplitZip,
+  exportFullPatternPng,
+  exportPurchaseListCsv,
+  exportPurchaseListPng,
+  exportSeparatedSheetsZip,
+} from "@/core/export/exportPattern";
 import { parseHexColor, rgbToHex } from "@/core/color/utils";
-import { exportFullPatternPng, exportSeparatedSheetsZip } from "@/core/export/exportPattern";
 import {
   disposeLoadedSourceImage,
   loadSourceImageFromFile,
@@ -13,10 +19,15 @@ import {
 } from "@/core/image/loadSourceImage";
 import { loadBrandCodeMap, summarizeBrandCoverage } from "@/core/palette/brandCodeMap";
 import { loadColorSystemMapping } from "@/core/palette/colorSystemMapping";
-import { generatePattern } from "@/core/pattern/generatePattern";
 import type { CleanupLevel, PatternSettings } from "@/types/image";
 import type { GeneratedPattern } from "@/types/pattern";
 import type { BrandCodeMap, BrandCoverageSummary, PaletteColor } from "@/types/palette";
+import {
+  PatternGenerationAbortedError,
+  type PatternGenerationProgress,
+  type PatternGenerationStage,
+} from "@/types/patternGeneration";
+import { startPatternGenerationTask, type PatternGenerationTask } from "@/workers/patternWorkerClient";
 
 const defaultSettings: PatternSettings = {
   artworkWidth: 48,
@@ -38,7 +49,16 @@ const defaultSettings: PatternSettings = {
   sampleGridSize: 5,
 };
 
+const generationStageLabels: Record<PatternGenerationStage, string> = {
+  sampling: "单格采样",
+  "max-colors": "限色筛选",
+  matching: "色号匹配",
+  cleanup: "杂色清理",
+  statistics: "统计汇总",
+};
+
 export function HomePage() {
+  const activeTaskRef = useRef<PatternGenerationTask | null>(null);
   const [map, setMap] = useState<BrandCodeMap | null>(null);
   const [coverage, setCoverage] = useState<BrandCoverageSummary[]>([]);
   const [paletteLibrary, setPaletteLibrary] = useState<Map<string, PaletteColor[]> | null>(null);
@@ -51,7 +71,9 @@ export function HomePage() {
   const [showCodes, setShowCodes] = useState(false);
   const [highlightedColorId, setHighlightedColorId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState<PatternGenerationProgress | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [purchaseReserveRatio, setPurchaseReserveRatio] = useState(0.05);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -92,9 +114,25 @@ export function HomePage() {
     };
   }, [sourceImage]);
 
+  useEffect(() => {
+    return () => {
+      activeTaskRef.current?.cancel();
+    };
+  }, []);
+
   const currentPalette = paletteLibrary?.get(settings.brandId) ?? [];
+  const generationPercent = generationProgress ? Math.round(generationProgress.progress * 100) : 0;
+  const generationStageLabel = generationProgress ? generationStageLabels[generationProgress.stage] : null;
+
+  function cancelActiveGeneration() {
+    activeTaskRef.current?.cancel();
+    activeTaskRef.current = null;
+    setIsGenerating(false);
+    setGenerationProgress(null);
+  }
 
   async function replaceSourceImage(nextImage: LoadedSourceImage) {
+    cancelActiveGeneration();
     disposeLoadedSourceImage(sourceImage);
     setSourceImage(nextImage);
     setPattern(null);
@@ -126,30 +164,56 @@ export function HomePage() {
     }
   }
 
-  function handleGenerate() {
+  async function handleGenerate() {
     if (!sourceImage || currentPalette.length === 0) {
       return;
     }
 
+    cancelActiveGeneration();
     setIsGenerating(true);
     setError(null);
-    window.setTimeout(() => {
-      try {
-        const nextPattern = generatePattern(sourceImage, settings, currentPalette);
-        startTransition(() => {
-          setPattern(nextPattern);
-          setPreviewMode("pattern");
-          setHighlightedColorId(null);
-        });
-      } catch (generationError) {
-        setError(generationError instanceof Error ? generationError.message : "生成失败。");
-      } finally {
-        setIsGenerating(false);
+    setGenerationProgress({
+      stage: "sampling",
+      progress: 0,
+    });
+
+    const task = startPatternGenerationTask(sourceImage, settings, currentPalette, {
+      onProgress: setGenerationProgress,
+    });
+    activeTaskRef.current = task;
+
+    try {
+      const nextPattern = await task.promise;
+      if (activeTaskRef.current?.taskId !== task.taskId) {
+        return;
       }
-    }, 0);
+
+      startTransition(() => {
+        setPattern(nextPattern);
+        setPreviewMode("pattern");
+        setHighlightedColorId(null);
+      });
+    } catch (generationError) {
+      if (activeTaskRef.current?.taskId !== task.taskId) {
+        return;
+      }
+
+      if (generationError instanceof PatternGenerationAbortedError) {
+        return;
+      }
+
+      setError(generationError instanceof Error ? generationError.message : "生成失败。");
+    } finally {
+      if (activeTaskRef.current?.taskId === task.taskId) {
+        activeTaskRef.current = null;
+        setIsGenerating(false);
+        setGenerationProgress(null);
+      }
+    }
   }
 
   function updateSettings(patch: Partial<PatternSettings>) {
+    cancelActiveGeneration();
     setSettings((current) => ({
       ...current,
       ...patch,
@@ -188,6 +252,55 @@ export function HomePage() {
     } finally {
       setIsExporting(false);
     }
+  }
+
+  async function handleExportPurchaseListPng() {
+    if (!pattern) {
+      return;
+    }
+
+    setIsExporting(true);
+    setError(null);
+    try {
+      await exportPurchaseListPng(pattern, purchaseReserveRatio);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "采购清单 PNG 导出失败。");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  function handleExportPurchaseListCsv() {
+    if (!pattern) {
+      return;
+    }
+
+    setError(null);
+    try {
+      exportPurchaseListCsv(pattern, purchaseReserveRatio);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "采购清单 CSV 导出失败。");
+    }
+  }
+
+  async function handleExportBoardSplitZip() {
+    if (!pattern) {
+      return;
+    }
+
+    setIsExporting(true);
+    setError(null);
+    try {
+      await exportBoardSplitZip(pattern);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "底板拆分图导出失败。");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  function handleCancelGeneration() {
+    cancelActiveGeneration();
   }
 
   const backgroundHex = rgbToHex(settings.backgroundRgb);
@@ -430,11 +543,18 @@ export function HomePage() {
               <button
                 type="button"
                 className="action-button"
-                onClick={handleGenerate}
+                onClick={() => void handleGenerate()}
                 disabled={!sourceImage || currentPalette.length === 0 || isGenerating}
               >
-                {isGenerating ? "生成中..." : "生成拼豆图纸"}
+                {isGenerating && generationStageLabel
+                  ? `生成中 ${generationStageLabel} ${generationPercent}%`
+                  : "生成拼豆图纸"}
               </button>
+              {isGenerating ? (
+                <button type="button" className="action-button secondary" onClick={handleCancelGeneration}>
+                  取消生成
+                </button>
+              ) : null}
             </div>
           </Panel>
 
@@ -453,6 +573,17 @@ export function HomePage() {
                 <span>当前图片</span>
               </div>
             </div>
+            {isGenerating && generationStageLabel ? (
+              <div className="progress-box">
+                <div className="progress-copy">
+                  <strong>{generationStageLabel}</strong>
+                  <span>{generationPercent}%</span>
+                </div>
+                <div className="progress-bar">
+                  <div className="progress-bar-fill" style={{ width: `${generationPercent}%` }} />
+                </div>
+              </div>
+            ) : null}
             {error ? <div className="error-box" style={{ marginTop: "14px" }}>{error}</div> : null}
           </Panel>
         </div>
@@ -551,6 +682,41 @@ export function HomePage() {
                     disabled={isExporting}
                   >
                     导出分色图 ZIP
+                  </button>
+                  <div className="field">
+                    <span>采购预留比例</span>
+                    <select
+                      value={String(purchaseReserveRatio)}
+                      onChange={(event) => setPurchaseReserveRatio(Number(event.target.value))}
+                    >
+                      <option value="0">0%</option>
+                      <option value="0.05">5%</option>
+                      <option value="0.1">10%</option>
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    className="action-button secondary"
+                    onClick={() => void handleExportPurchaseListPng()}
+                    disabled={isExporting}
+                  >
+                    导出采购清单 PNG
+                  </button>
+                  <button
+                    type="button"
+                    className="action-button secondary"
+                    onClick={handleExportPurchaseListCsv}
+                    disabled={isExporting}
+                  >
+                    导出采购清单 CSV
+                  </button>
+                  <button
+                    type="button"
+                    className="action-button secondary"
+                    onClick={() => void handleExportBoardSplitZip()}
+                    disabled={isExporting}
+                  >
+                    导出底板拆分图 ZIP
                   </button>
                 </div>
                 <div className="metric-grid">

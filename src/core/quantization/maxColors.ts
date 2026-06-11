@@ -1,6 +1,7 @@
 import { deltaE00 } from "@/core/color/ciede2000";
 import type { LabColor } from "@/types/color";
 import type { PaletteColor } from "@/types/palette";
+import { throwIfPatternGenerationAborted } from "@/types/patternGeneration";
 
 interface TargetGroup {
   key: string;
@@ -34,13 +35,19 @@ export function reducePaletteSelections(
   targetLabs: (LabColor | null)[],
   palette: PaletteColor[],
   maxColors: number,
+  options: {
+    onProgress?: (progress: number) => void;
+    shouldAbort?: () => boolean;
+  } = {},
 ) {
   if (maxColors <= 0 || palette.length <= maxColors) {
+    options.onProgress?.(1);
     return palette;
   }
 
   const groups = buildTargetGroups(targetLabs);
   if (groups.length === 0) {
+    options.onProgress?.(1);
     return [];
   }
 
@@ -50,6 +57,8 @@ export function reducePaletteSelections(
   );
 
   while (selected.length < maxColors) {
+    throwIfPatternGenerationAborted(options.shouldAbort);
+
     let bestCandidate: PaletteColor | null = null;
     let bestCost = Number.POSITIVE_INFINITY;
 
@@ -79,6 +88,7 @@ export function reducePaletteSelections(
     }
 
     selected.push(bestCandidate);
+    options.onProgress?.(selected.length / maxColors);
 
     for (const group of groups) {
       const currentBest = bestDistances.get(group.key) ?? Number.POSITIVE_INFINITY;
@@ -87,5 +97,6 @@ export function reducePaletteSelections(
     }
   }
 
+  options.onProgress?.(1);
   return selected;
 }
