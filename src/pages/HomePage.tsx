@@ -131,6 +131,14 @@ export function HomePage() {
   const generationPercent = generationProgress ? Math.round(generationProgress.progress * 100) : 0;
   const generationStageLabel = generationProgress ? generationStageLabels[generationProgress.stage] : null;
   const backgroundHex = rgbToHex(settings.backgroundRgb);
+  const currentBrandName =
+    map?.brands.find((brand) => brand.id === settings.brandId)?.nameZh ?? settings.brandId.toUpperCase();
+  const boardColumns = Math.ceil(settings.artworkWidth / settings.boardWidth);
+  const boardRows = Math.ceil(settings.artworkHeight / settings.boardHeight);
+  const selectedUsage =
+    pattern && highlightedColorId
+      ? pattern.statistics.usages.find((usage) => usage.color.id === highlightedColorId) ?? null
+      : null;
 
   function cancelActiveGeneration() {
     activeTaskRef.current?.cancel();
@@ -237,537 +245,552 @@ export function HomePage() {
     }
   }
 
-  const selectedUsage =
-    pattern && highlightedColorId
-      ? pattern.statistics.usages.find((usage) => usage.color.id === highlightedColorId) ?? null
-      : null;
-
   return (
     <main className="shell">
-      <div className="layout">
-        <div className="stack">
-          <section className="panel hero">
-            <span className="eyebrow">BeadGrid / MVP 原型</span>
-            <h1>导入正常图片后，直接预览拼豆图纸与导出成品。</h1>
-            <p className="lede">
-              当前版本已经连通图片导入、裁剪、透明处理、主导色采样、品牌映射、限色、杂色清理、
-              图纸预览、采购清单、分色图与底板拆分导出。
-            </p>
-            <div className="pill-row">
-              <div className="pill">
-                <strong>{map?.rows.length ?? "--"}</strong>
-                <span>已接入的映射行数</span>
-              </div>
-              <div className="pill">
-                <strong>{coverage.length || "--"}</strong>
-                <span>当前识别到的品牌列</span>
-              </div>
-              <div className="pill">
-                <strong>{rgbSeedCount ?? "--"}</strong>
-                <span>已识别的 RGB 种子色条目</span>
-              </div>
+      <div className="app-window">
+        <header className="app-topbar">
+          <div className="app-topbar-main">
+            <div className="window-dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
             </div>
-          </section>
-
-          <Panel title="生成参数" eyebrow="左侧">
-            <div className="form-grid">
-              <label className="field">
-                <span>导入图片</span>
-                <input
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-                  onChange={(event) => void handleFileSelected(event.target.files?.[0] ?? null)}
-                />
-              </label>
-              <button type="button" className="action-button secondary" onClick={() => void handleLoadSampleImage()}>
-                加载真实测试图
-              </button>
-
-              <div className="two-up">
-                <label className="field">
-                  <span>作品宽度</span>
-                  <input
-                    type="number"
-                    min={8}
-                    max={300}
-                    value={settings.artworkWidth}
-                    onChange={(event) => updateSettings({ artworkWidth: Number(event.target.value) || 8 })}
-                  />
-                </label>
-                <label className="field">
-                  <span>作品高度</span>
-                  <input
-                    type="number"
-                    min={8}
-                    max={300}
-                    value={settings.artworkHeight}
-                    onChange={(event) => updateSettings({ artworkHeight: Number(event.target.value) || 8 })}
-                  />
-                </label>
+            <div>
+              <div className="app-name-row">
+                <strong>BeadGrid</strong>
+                <span className="app-badge">Windows MVP</span>
               </div>
-
-              <div className="two-up">
-                <label className="field">
-                  <span>底板宽度</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={99}
-                    value={settings.boardWidth}
-                    onChange={(event) => updateSettings({ boardWidth: Number(event.target.value) || 1 })}
-                  />
-                </label>
-                <label className="field">
-                  <span>底板高度</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={99}
-                    value={settings.boardHeight}
-                    onChange={(event) => updateSettings({ boardHeight: Number(event.target.value) || 1 })}
-                  />
-                </label>
-              </div>
-
-              <label className="field">
-                <span>品牌</span>
-                <select value={settings.brandId} onChange={(event) => updateSettings({ brandId: event.target.value })}>
-                  {map?.brands.map((brand) => (
-                    <option key={brand.id} value={brand.id}>
-                      {brand.nameZh}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="two-up">
-                <label className="field">
-                  <span>裁剪方式</span>
-                  <select
-                    value={settings.fitMode}
-                    onChange={(event) => updateSettings({ fitMode: event.target.value as PatternSettings["fitMode"] })}
-                  >
-                    <option value="cover">填满裁剪</option>
-                    <option value="contain">完整显示</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>旋转</span>
-                  <select
-                    value={settings.rotation}
-                    onChange={(event) =>
-                      updateSettings({
-                        rotation: Number(event.target.value) as PatternSettings["rotation"],
-                      })
-                    }
-                  >
-                    <option value={0}>0°</option>
-                    <option value={90}>90°</option>
-                    <option value={180}>180°</option>
-                    <option value={270}>270°</option>
-                  </select>
-                </label>
-              </div>
-
-              <label className="field">
-                <span>缩放 {settings.zoom.toFixed(2)}x</span>
-                <input
-                  type="range"
-                  min={0.5}
-                  max={3}
-                  step={0.01}
-                  value={settings.zoom}
-                  onChange={(event) => updateSettings({ zoom: Number(event.target.value) })}
-                />
-              </label>
-              <label className="field">
-                <span>水平偏移 {settings.offsetX.toFixed(2)}</span>
-                <input
-                  type="range"
-                  min={-1}
-                  max={1}
-                  step={0.01}
-                  value={settings.offsetX}
-                  onChange={(event) => updateSettings({ offsetX: Number(event.target.value) })}
-                />
-              </label>
-              <label className="field">
-                <span>垂直偏移 {settings.offsetY.toFixed(2)}</span>
-                <input
-                  type="range"
-                  min={-1}
-                  max={1}
-                  step={0.01}
-                  value={settings.offsetY}
-                  onChange={(event) => updateSettings({ offsetY: Number(event.target.value) })}
-                />
-              </label>
-
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={settings.flipHorizontal}
-                  onChange={(event) => updateSettings({ flipHorizontal: event.target.checked })}
-                />
-                <span>水平翻转</span>
-              </label>
-
-              <div className="two-up">
-                <label className="field">
-                  <span>透明处理</span>
-                  <select
-                    value={settings.transparencyMode}
-                    onChange={(event) =>
-                      updateSettings({
-                        transparencyMode: event.target.value as PatternSettings["transparencyMode"],
-                      })
-                    }
-                  >
-                    <option value="empty">透明区域作空豆</option>
-                    <option value="blend">合成到背景色</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>背景色</span>
-                  <input
-                    type="color"
-                    value={backgroundHex}
-                    onChange={(event) => updateSettings({ backgroundRgb: parseHexColor(event.target.value) })}
-                  />
-                </label>
-              </div>
-
-              <label className="field">
-                <span>透明阈值 {settings.alphaThreshold.toFixed(2)}</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={0.8}
-                  step={0.01}
-                  value={settings.alphaThreshold}
-                  onChange={(event) => updateSettings({ alphaThreshold: Number(event.target.value) })}
-                />
-              </label>
-
-              <div className="two-up">
-                <label className="field">
-                  <span>最大颜色数</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={64}
-                    value={settings.maxColors}
-                    onChange={(event) => updateSettings({ maxColors: Number(event.target.value) || 0 })}
-                  />
-                </label>
-                <label className="field">
-                  <span>杂色清理</span>
-                  <select
-                    value={settings.cleanupLevel}
-                    onChange={(event) => updateSettings({ cleanupLevel: event.target.value as CleanupLevel })}
-                  >
-                    <option value="off">关闭</option>
-                    <option value="light">轻度</option>
-                    <option value="medium">中度</option>
-                    <option value="strong">强力</option>
-                  </select>
-                </label>
-              </div>
-
-              <label className="field">
-                <span>
-                  单格采样密度 {settings.sampleGridSize}×{settings.sampleGridSize}
-                </span>
-                <input
-                  type="range"
-                  min={3}
-                  max={7}
-                  step={1}
-                  value={settings.sampleGridSize}
-                  onChange={(event) => updateSettings({ sampleGridSize: Number(event.target.value) })}
-                />
-              </label>
-
-              <button
-                type="button"
-                className="action-button"
-                onClick={() => void handleGenerate()}
-                disabled={!sourceImage || currentPalette.length === 0 || isGenerating}
-              >
-                {isGenerating && generationStageLabel
-                  ? `生成中 ${generationStageLabel} ${generationPercent}%`
-                  : "生成拼豆图纸"}
-              </button>
-              {isGenerating ? (
-                <button type="button" className="action-button secondary" onClick={cancelActiveGeneration}>
-                  取消生成
-                </button>
-              ) : null}
+              <p className="app-subtitle">把普通图片整理成适合照图拼豆的桌面工作台。</p>
             </div>
-          </Panel>
-
-          <Panel title="当前输入状态" eyebrow="资源">
-            <div className="metric-grid">
-              <div className="metric">
-                <strong>{sourceImage ? `${sourceImage.width} × ${sourceImage.height}` : "--"}</strong>
-                <span>原图像素</span>
-              </div>
-              <div className="metric">
-                <strong>{currentPalette.length || "--"}</strong>
-                <span>当前品牌可用颜色</span>
-              </div>
-              <div className="metric">
-                <strong>{sourceImage?.name ?? "--"}</strong>
-                <span>当前图片</span>
-              </div>
+          </div>
+          <div className="app-topbar-status">
+            <div className="app-chip">
+              <strong>{sourceImage ? `${sourceImage.width} × ${sourceImage.height}` : "--"}</strong>
+              <span>当前图片</span>
             </div>
-
-            {isGenerating && generationStageLabel ? (
-              <div className="progress-box">
-                <div className="progress-copy">
-                  <strong>{generationStageLabel}</strong>
-                  <span>{generationPercent}%</span>
-                </div>
-                <div className="progress-bar">
-                  <div className="progress-bar-fill" style={{ width: `${generationPercent}%` }} />
-                </div>
-              </div>
-            ) : null}
-
-            {error ? <div className="error-box" style={{ marginTop: "14px" }}>{error}</div> : null}
-          </Panel>
-        </div>
-
-        <div className="stack">
-          <Panel
-            title="预览"
-            eyebrow="中间"
-            aside={
-              <div className="inline-actions">
-                <button
-                  type="button"
-                  className={`mini-button ${previewMode === "source" ? "is-active" : ""}`}
-                  onClick={() => setPreviewMode("source")}
-                >
-                  原图
-                </button>
-                <button
-                  type="button"
-                  className={`mini-button ${previewMode === "pattern" ? "is-active" : ""}`}
-                  onClick={() => setPreviewMode("pattern")}
-                >
-                  图纸
-                </button>
-              </div>
-            }
-          >
-            <div className="preview-toolbar">
-              <label className="checkbox-row compact">
-                <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />
-                <span>1×1 网格</span>
-              </label>
-              <label className="checkbox-row compact">
-                <input
-                  type="checkbox"
-                  checked={showFiveByFiveGrid}
-                  onChange={(event) => setShowFiveByFiveGrid(event.target.checked)}
-                />
-                <span>5×5 小格</span>
-              </label>
-              <label className="checkbox-row compact">
-                <input
-                  type="checkbox"
-                  checked={showBoardBoundaries}
-                  onChange={(event) => setShowBoardBoundaries(event.target.checked)}
-                />
-                <span>底板分界</span>
-              </label>
-              <label className="checkbox-row compact">
-                <input type="checkbox" checked={showCodes} onChange={(event) => setShowCodes(event.target.checked)} />
-                <span>显示色号</span>
-              </label>
-              <label className="checkbox-row compact">
-                <input
-                  type="checkbox"
-                  checked={showCoordinates}
-                  onChange={(event) => setShowCoordinates(event.target.checked)}
-                />
-                <span>显示坐标</span>
-              </label>
+            <div className="app-chip">
+              <strong>{currentBrandName}</strong>
+              <span>品牌色板</span>
             </div>
-
-            <div className="preview-frame">
-              {previewMode === "source" ? (
-                <SourcePreviewCanvas sourceImage={sourceImage} settings={settings} />
-              ) : (
-                <PatternPreviewCanvas
-                  pattern={pattern}
-                  showGrid={showGrid}
-                  showCodes={showCodes}
-                  showFiveByFiveGrid={showFiveByFiveGrid}
-                  showBoardBoundaries={showBoardBoundaries}
-                  showCoordinates={showCoordinates}
-                  highlightedColorId={highlightedColorId}
-                  onColorPick={setHighlightedColorId}
-                  onHoverChange={setHoveredCell}
-                />
-              )}
+            <div className="app-chip">
+              <strong>{pattern?.statistics.actualColorCount ?? "--"}</strong>
+              <span>实际颜色</span>
             </div>
+          </div>
+        </header>
 
-            <div className="preview-meta">
-              <div className="preview-chip">
-                <strong>悬停坐标</strong>
-                <span>
-                  {hoveredCell ? `${hoveredCell.x + 1}, ${hoveredCell.y + 1}` : "移动到图纸上查看"}
-                </span>
-              </div>
-              <div className="preview-chip">
-                <strong>悬停色号</strong>
-                <span>{hoveredCell?.code ?? "-"}</span>
-              </div>
-              <div className="preview-chip">
-                <strong>颜色名称</strong>
-                <span>{hoveredCell?.nameZh ?? "-"}</span>
-              </div>
-            </div>
-          </Panel>
-
-          <Panel title="色板资源概况" eyebrow="右上">
-            <div className="table-wrap">
-              {coverage.length > 0 ? (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>品牌</th>
-                      <th>已映射</th>
-                      <th>缺失</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {coverage.map((item) => (
-                      <tr key={item.brandId}>
-                        <td>{item.nameZh}</td>
-                        <td>{item.mappedRows}</td>
-                        <td>{item.missingRows}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="empty">正在读取色板数据。</div>
-              )}
-            </div>
-          </Panel>
-
-          <Panel title="统计与颜色用量" eyebrow="右侧">
-            {pattern ? (
-              <>
-                <div className="export-actions">
-                  <button
-                    type="button"
-                    className="action-button"
-                    onClick={() =>
-                      void runExport(
-                        () => exportFullPatternPng(pattern),
-                        "完整底稿导出失败。",
-                      )
-                    }
-                    disabled={isExporting}
-                  >
-                    {isExporting ? "导出中..." : "导出完整底稿 PNG"}
-                  </button>
-                  <button
-                    type="button"
-                    className="action-button secondary"
-                    onClick={() =>
-                      void runExport(
-                        () => exportSeparatedSheetsZip(pattern),
-                        "分色图导出失败。",
-                      )
-                    }
-                    disabled={isExporting}
-                  >
-                    导出分色图 ZIP
-                  </button>
-                  <div className="field">
-                    <span>采购预留比例</span>
-                    <select
-                      value={String(purchaseReserveRatio)}
-                      onChange={(event) => setPurchaseReserveRatio(Number(event.target.value))}
+        <div className="workspace">
+          <div className="left-rail">
+            <Panel title="输入与生成" eyebrow="项目" className="control-panel">
+              <div className="form-grid">
+                <div className="control-section">
+                  <div className="section-kicker">图片来源</div>
+                  <label className="field">
+                    <span>导入图片</span>
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                      onChange={(event) => void handleFileSelected(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  <div className="two-up">
+                    <button
+                      type="button"
+                      className="action-button secondary"
+                      onClick={() => void handleLoadSampleImage()}
                     >
-                      <option value="0">0%</option>
-                      <option value="0.05">5%</option>
-                      <option value="0.1">10%</option>
+                      加载测试图
+                    </button>
+                    <button
+                      type="button"
+                      className="action-button secondary"
+                      onClick={() => setPreviewMode("source")}
+                      disabled={!sourceImage}
+                    >
+                      查看原图
+                    </button>
+                  </div>
+                </div>
+
+                <div className="control-section">
+                  <div className="section-kicker">输出尺寸</div>
+                  <div className="two-up">
+                    <label className="field">
+                      <span>作品宽度</span>
+                      <input
+                        type="number"
+                        min={8}
+                        max={300}
+                        value={settings.artworkWidth}
+                        onChange={(event) => updateSettings({ artworkWidth: Number(event.target.value) || 8 })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>作品高度</span>
+                      <input
+                        type="number"
+                        min={8}
+                        max={300}
+                        value={settings.artworkHeight}
+                        onChange={(event) => updateSettings({ artworkHeight: Number(event.target.value) || 8 })}
+                      />
+                    </label>
+                  </div>
+                  <div className="two-up">
+                    <label className="field">
+                      <span>底板宽度</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={settings.boardWidth}
+                        onChange={(event) => updateSettings({ boardWidth: Number(event.target.value) || 1 })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>底板高度</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={settings.boardHeight}
+                        onChange={(event) => updateSettings({ boardHeight: Number(event.target.value) || 1 })}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="control-section">
+                  <div className="section-kicker">颜色策略</div>
+                  <label className="field">
+                    <span>品牌</span>
+                    <select value={settings.brandId} onChange={(event) => updateSettings({ brandId: event.target.value })}>
+                      {map?.brands.map((brand) => (
+                        <option key={brand.id} value={brand.id}>
+                          {brand.nameZh}
+                        </option>
+                      ))}
                     </select>
+                  </label>
+                  <div className="two-up">
+                    <label className="field">
+                      <span>最大颜色数</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={64}
+                        value={settings.maxColors}
+                        onChange={(event) => updateSettings({ maxColors: Number(event.target.value) || 0 })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>杂色清理</span>
+                      <select
+                        value={settings.cleanupLevel}
+                        onChange={(event) => updateSettings({ cleanupLevel: event.target.value as CleanupLevel })}
+                      >
+                        <option value="off">关闭</option>
+                        <option value="light">轻度</option>
+                        <option value="medium">中度</option>
+                        <option value="strong">强力</option>
+                      </select>
+                    </label>
                   </div>
-                  <button
-                    type="button"
-                    className="action-button secondary"
-                    onClick={() =>
-                      void runExport(
-                        () => exportPurchaseListPng(pattern, purchaseReserveRatio),
-                        "采购清单 PNG 导出失败。",
-                      )
-                    }
-                    disabled={isExporting}
-                  >
-                    导出采购清单 PNG
-                  </button>
-                  <button
-                    type="button"
-                    className="action-button secondary"
-                    onClick={() =>
-                      void runExport(
-                        () => exportPurchaseListCsv(pattern, purchaseReserveRatio),
-                        "采购清单 CSV 导出失败。",
-                      )
-                    }
-                    disabled={isExporting}
-                  >
-                    导出采购清单 CSV
-                  </button>
-                  <button
-                    type="button"
-                    className="action-button secondary"
-                    onClick={() =>
-                      void runExport(
-                        () => exportBoardSplitZip(pattern),
-                        "底板拆分图导出失败。",
-                      )
-                    }
-                    disabled={isExporting}
-                  >
-                    导出底板拆分图 ZIP
-                  </button>
-                </div>
-
-                <div className="metric-grid">
-                  <div className="metric">
-                    <strong>{pattern.statistics.filledCells}</strong>
-                    <span>非空格数</span>
-                  </div>
-                  <div className="metric">
-                    <strong>{pattern.statistics.emptyCells}</strong>
-                    <span>空豆数</span>
-                  </div>
-                  <div className="metric">
-                    <strong>{pattern.statistics.actualColorCount}</strong>
-                    <span>实际颜色数</span>
-                  </div>
-                </div>
-
-                {selectedUsage ? (
-                  <div className="preview-chip selected-color-chip">
-                    <strong>当前高亮</strong>
+                  <label className="field">
                     <span>
-                      {selectedUsage.color.code}
-                      {selectedUsage.color.nameZh ? ` · ${selectedUsage.color.nameZh}` : ""}
-                      {` · ${selectedUsage.count} 颗`}
+                      单格采样密度 {settings.sampleGridSize}×{settings.sampleGridSize}
                     </span>
-                  </div>
-                ) : null}
+                    <input
+                      type="range"
+                      min={3}
+                      max={7}
+                      step={1}
+                      value={settings.sampleGridSize}
+                      onChange={(event) => updateSettings({ sampleGridSize: Number(event.target.value) })}
+                    />
+                  </label>
+                </div>
 
-                <div className="table-wrap" style={{ marginTop: "14px" }}>
+                <div className="control-section">
+                  <div className="section-kicker">构图微调</div>
+                  <div className="two-up">
+                    <label className="field">
+                      <span>裁切方式</span>
+                      <select
+                        value={settings.fitMode}
+                        onChange={(event) => updateSettings({ fitMode: event.target.value as PatternSettings["fitMode"] })}
+                      >
+                        <option value="cover">填满裁切</option>
+                        <option value="contain">完整显示</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>旋转</span>
+                      <select
+                        value={settings.rotation}
+                        onChange={(event) =>
+                          updateSettings({
+                            rotation: Number(event.target.value) as PatternSettings["rotation"],
+                          })
+                        }
+                      >
+                        <option value={0}>0°</option>
+                        <option value={90}>90°</option>
+                        <option value={180}>180°</option>
+                        <option value={270}>270°</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label className="field">
+                    <span>缩放 {settings.zoom.toFixed(2)}x</span>
+                    <input
+                      type="range"
+                      min={0.5}
+                      max={3}
+                      step={0.01}
+                      value={settings.zoom}
+                      onChange={(event) => updateSettings({ zoom: Number(event.target.value) })}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>水平偏移 {settings.offsetX.toFixed(2)}</span>
+                    <input
+                      type="range"
+                      min={-1}
+                      max={1}
+                      step={0.01}
+                      value={settings.offsetX}
+                      onChange={(event) => updateSettings({ offsetX: Number(event.target.value) })}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>垂直偏移 {settings.offsetY.toFixed(2)}</span>
+                    <input
+                      type="range"
+                      min={-1}
+                      max={1}
+                      step={0.01}
+                      value={settings.offsetY}
+                      onChange={(event) => updateSettings({ offsetY: Number(event.target.value) })}
+                    />
+                  </label>
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={settings.flipHorizontal}
+                      onChange={(event) => updateSettings({ flipHorizontal: event.target.checked })}
+                    />
+                    <span>水平翻转</span>
+                  </label>
+                </div>
+
+                <div className="control-section">
+                  <div className="section-kicker">透明处理</div>
+                  <div className="two-up">
+                    <label className="field">
+                      <span>透明策略</span>
+                      <select
+                        value={settings.transparencyMode}
+                        onChange={(event) =>
+                          updateSettings({
+                            transparencyMode: event.target.value as PatternSettings["transparencyMode"],
+                          })
+                        }
+                      >
+                        <option value="empty">透明区域作空珠</option>
+                        <option value="blend">合成到背景色</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>背景颜色</span>
+                      <input
+                        type="color"
+                        value={backgroundHex}
+                        onChange={(event) => updateSettings({ backgroundRgb: parseHexColor(event.target.value) })}
+                      />
+                    </label>
+                  </div>
+                  <label className="field">
+                    <span>透明阈值 {settings.alphaThreshold.toFixed(2)}</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={0.8}
+                      step={0.01}
+                      value={settings.alphaThreshold}
+                      onChange={(event) => updateSettings({ alphaThreshold: Number(event.target.value) })}
+                    />
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  className="action-button primary-large"
+                  onClick={() => void handleGenerate()}
+                  disabled={!sourceImage || currentPalette.length === 0 || isGenerating}
+                >
+                  {isGenerating && generationStageLabel
+                    ? `生成中 · ${generationStageLabel} ${generationPercent}%`
+                    : "生成拼豆图纸"}
+                </button>
+                {isGenerating ? (
+                  <button type="button" className="action-button secondary" onClick={cancelActiveGeneration}>
+                    取消当前任务
+                  </button>
+                ) : null}
+              </div>
+            </Panel>
+
+            <Panel title="当前状态" eyebrow="输入" className="secondary-panel">
+              <div className="metric-grid">
+                <div className="metric">
+                  <strong>{sourceImage ? `${sourceImage.width} × ${sourceImage.height}` : "--"}</strong>
+                  <span>原图像素</span>
+                </div>
+                <div className="metric">
+                  <strong>{currentPalette.length || "--"}</strong>
+                  <span>可用颜色</span>
+                </div>
+                <div className="metric">
+                  <strong>{sourceImage?.name ?? "--"}</strong>
+                  <span>当前文件</span>
+                </div>
+                <div className="metric">
+                  <strong>
+                    {boardColumns} × {boardRows}
+                  </strong>
+                  <span>底板拆分</span>
+                </div>
+              </div>
+              {isGenerating && generationStageLabel ? (
+                <div className="progress-box">
+                  <div className="progress-copy">
+                    <strong>{generationStageLabel}</strong>
+                    <span>{generationPercent}%</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div className="progress-bar-fill" style={{ width: `${generationPercent}%` }} />
+                  </div>
+                </div>
+              ) : null}
+              {error ? <div className="error-box">{error}</div> : null}
+            </Panel>
+          </div>
+
+          <div className="center-stage">
+            <Panel
+              title="图纸预览"
+              eyebrow="画布"
+              className="preview-panel"
+              aside={
+                <div className="inline-actions">
+                  <button
+                    type="button"
+                    className={`mini-button ${previewMode === "source" ? "is-active" : ""}`}
+                    onClick={() => setPreviewMode("source")}
+                  >
+                    原图预览
+                  </button>
+                  <button
+                    type="button"
+                    className={`mini-button ${previewMode === "pattern" ? "is-active" : ""}`}
+                    onClick={() => setPreviewMode("pattern")}
+                    disabled={!pattern}
+                  >
+                    图纸预览
+                  </button>
+                </div>
+              }
+            >
+              <div className="preview-intro">
+                <div>
+                  <strong>{previewMode === "source" ? "构图预览" : "拼豆图纸"}</strong>
+                  <span>
+                    {previewMode === "source"
+                      ? "先确认裁切和主体位置，再生成图纸。"
+                      : "支持色号、5×5 小格、底板边界、坐标和悬停读数。"}
+                  </span>
+                </div>
+                <div className="preview-stamp">
+                  {pattern ? `${pattern.width} × ${pattern.height}` : `${settings.artworkWidth} × ${settings.artworkHeight}`}
+                </div>
+              </div>
+
+              <div className="preview-toolbar segmented-toolbar">
+                <label className="checkbox-row compact">
+                  <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />
+                  <span>1×1 网格</span>
+                </label>
+                <label className="checkbox-row compact">
+                  <input
+                    type="checkbox"
+                    checked={showFiveByFiveGrid}
+                    onChange={(event) => setShowFiveByFiveGrid(event.target.checked)}
+                  />
+                  <span>5×5 小格</span>
+                </label>
+                <label className="checkbox-row compact">
+                  <input
+                    type="checkbox"
+                    checked={showBoardBoundaries}
+                    onChange={(event) => setShowBoardBoundaries(event.target.checked)}
+                  />
+                  <span>底板分界</span>
+                </label>
+                <label className="checkbox-row compact">
+                  <input type="checkbox" checked={showCodes} onChange={(event) => setShowCodes(event.target.checked)} />
+                  <span>显示色号</span>
+                </label>
+                <label className="checkbox-row compact">
+                  <input
+                    type="checkbox"
+                    checked={showCoordinates}
+                    onChange={(event) => setShowCoordinates(event.target.checked)}
+                  />
+                  <span>显示坐标</span>
+                </label>
+              </div>
+
+              <div className="preview-frame preview-frame-large">
+                {previewMode === "source" ? (
+                  <SourcePreviewCanvas sourceImage={sourceImage} settings={settings} />
+                ) : (
+                  <PatternPreviewCanvas
+                    pattern={pattern}
+                    showGrid={showGrid}
+                    showCodes={showCodes}
+                    showFiveByFiveGrid={showFiveByFiveGrid}
+                    showBoardBoundaries={showBoardBoundaries}
+                    showCoordinates={showCoordinates}
+                    highlightedColorId={highlightedColorId}
+                    onColorPick={setHighlightedColorId}
+                    onHoverChange={setHoveredCell}
+                  />
+                )}
+              </div>
+
+              <div className="preview-meta">
+                <div className="preview-chip">
+                  <strong>悬停坐标</strong>
+                  <span>{hoveredCell ? `${hoveredCell.x + 1}, ${hoveredCell.y + 1}` : "移动到图纸上查看"}</span>
+                </div>
+                <div className="preview-chip">
+                  <strong>悬停色号</strong>
+                  <span>{hoveredCell?.code ?? "-"}</span>
+                </div>
+                <div className="preview-chip">
+                  <strong>颜色名称</strong>
+                  <span>{hoveredCell?.nameZh ?? "-"}</span>
+                </div>
+                <div className="preview-chip preview-chip-wide">
+                  <strong>当前高亮</strong>
+                  <span>
+                    {selectedUsage
+                      ? `${selectedUsage.color.code}${selectedUsage.color.nameZh ? ` · ${selectedUsage.color.nameZh}` : ""} · ${selectedUsage.count} 颗`
+                      : "点击图纸或右侧颜色行，即可高亮同色区域。"}
+                  </span>
+                </div>
+              </div>
+            </Panel>
+          </div>
+
+          <div className="right-rail">
+            <Panel title="结果与导出" eyebrow="输出" className="stats-panel">
+              {pattern ? (
+                <>
+                  <div className="metric-grid compact-metrics">
+                    <div className="metric">
+                      <strong>{pattern.statistics.filledCells}</strong>
+                      <span>非空格数</span>
+                    </div>
+                    <div className="metric">
+                      <strong>{pattern.statistics.emptyCells}</strong>
+                      <span>空珠数量</span>
+                    </div>
+                    <div className="metric">
+                      <strong>{pattern.statistics.actualColorCount}</strong>
+                      <span>实际颜色</span>
+                    </div>
+                    <div className="metric">
+                      <strong>
+                        {boardColumns} × {boardRows}
+                      </strong>
+                      <span>底板布局</span>
+                    </div>
+                  </div>
+
+                  <div className="export-actions">
+                    <button
+                      type="button"
+                      className="action-button"
+                      onClick={() => void runExport(() => exportFullPatternPng(pattern), "完整底稿导出失败。")}
+                      disabled={isExporting}
+                    >
+                      {isExporting ? "导出中..." : "导出完整底稿 PNG"}
+                    </button>
+                    <button
+                      type="button"
+                      className="action-button secondary"
+                      onClick={() => void runExport(() => exportSeparatedSheetsZip(pattern), "分色图导出失败。")}
+                      disabled={isExporting}
+                    >
+                      导出分色图 ZIP
+                    </button>
+                    <div className="field">
+                      <span>采购预留比例</span>
+                      <select
+                        value={String(purchaseReserveRatio)}
+                        onChange={(event) => setPurchaseReserveRatio(Number(event.target.value))}
+                      >
+                        <option value="0">0%</option>
+                        <option value="0.05">5%</option>
+                        <option value="0.1">10%</option>
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      className="action-button secondary"
+                      onClick={() =>
+                        void runExport(
+                          () => exportPurchaseListPng(pattern, purchaseReserveRatio),
+                          "采购清单 PNG 导出失败。",
+                        )
+                      }
+                      disabled={isExporting}
+                    >
+                      导出采购清单 PNG
+                    </button>
+                    <button
+                      type="button"
+                      className="action-button secondary"
+                      onClick={() =>
+                        void runExport(
+                          () => exportPurchaseListCsv(pattern, purchaseReserveRatio),
+                          "采购清单 CSV 导出失败。",
+                        )
+                      }
+                      disabled={isExporting}
+                    >
+                      导出采购清单 CSV
+                    </button>
+                    <button
+                      type="button"
+                      className="action-button secondary"
+                      onClick={() => void runExport(() => exportBoardSplitZip(pattern), "底板拆分图导出失败。")}
+                      disabled={isExporting}
+                    >
+                      导出底板拆分 ZIP
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="empty">导入图片并生成后，这里会显示统计信息和导出入口。</div>
+              )}
+            </Panel>
+
+            <Panel title="颜色清单" eyebrow="用量" className="table-panel">
+              {pattern ? (
+                <div className="table-wrap">
                   <table>
                     <thead>
                       <tr>
@@ -800,11 +823,48 @@ export function HomePage() {
                     </tbody>
                   </table>
                 </div>
-              </>
-            ) : (
-              <div className="empty">导入图片并点击“生成拼豆图纸”后，这里会显示颜色统计。</div>
-            )}
-          </Panel>
+              ) : (
+                <div className="empty">生成图纸后，这里会按用量从多到少列出颜色。</div>
+              )}
+            </Panel>
+
+            <Panel title="色板映射概况" eyebrow="映射" className="secondary-panel">
+              <div className="metric-strip">
+                <div className="metric-inline">
+                  <strong>{currentPalette.length}</strong>
+                  <span>{currentBrandName} 颜色数</span>
+                </div>
+                <div className="metric-inline">
+                  <strong>{rgbSeedCount ?? "--"}</strong>
+                  <span>系统映射色数</span>
+                </div>
+              </div>
+              <div className="table-wrap">
+                {coverage.length > 0 ? (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>品牌</th>
+                        <th>已映射</th>
+                        <th>缺失</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {coverage.map((item) => (
+                        <tr key={item.brandId}>
+                          <td>{item.nameZh}</td>
+                          <td>{item.mappedRows}</td>
+                          <td>{item.missingRows}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="empty">正在读取色板数据。</div>
+                )}
+              </div>
+            </Panel>
+          </div>
         </div>
       </div>
     </main>
