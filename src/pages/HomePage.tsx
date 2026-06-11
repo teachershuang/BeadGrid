@@ -1,8 +1,12 @@
 import { startTransition, useEffect, useRef, useState } from "react";
+import demoSampleImageUrl from "@/assets/demo-cat-garden.png";
 import { Panel } from "@/components/Panel";
-import { PatternPreviewCanvas } from "@/components/PatternPreviewCanvas";
+import {
+  PatternPreviewCanvas,
+  type HoveredPatternCell,
+} from "@/components/PatternPreviewCanvas";
 import { SourcePreviewCanvas } from "@/components/SourcePreviewCanvas";
-import demoSampleImageUrl from "@/assets/mvp-sample.png";
+import { parseHexColor, rgbToHex } from "@/core/color/utils";
 import {
   exportBoardSplitZip,
   exportFullPatternPng,
@@ -10,7 +14,6 @@ import {
   exportPurchaseListPng,
   exportSeparatedSheetsZip,
 } from "@/core/export/exportPattern";
-import { parseHexColor, rgbToHex } from "@/core/color/utils";
 import {
   disposeLoadedSourceImage,
   loadSourceImageFromFile,
@@ -68,8 +71,12 @@ export function HomePage() {
   const [pattern, setPattern] = useState<GeneratedPattern | null>(null);
   const [previewMode, setPreviewMode] = useState<"source" | "pattern">("source");
   const [showGrid, setShowGrid] = useState(true);
-  const [showCodes, setShowCodes] = useState(false);
+  const [showCodes, setShowCodes] = useState(true);
+  const [showFiveByFiveGrid, setShowFiveByFiveGrid] = useState(true);
+  const [showBoardBoundaries, setShowBoardBoundaries] = useState(true);
+  const [showCoordinates, setShowCoordinates] = useState(true);
   const [highlightedColorId, setHighlightedColorId] = useState<string | null>(null);
+  const [hoveredCell, setHoveredCell] = useState<HoveredPatternCell | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState<PatternGenerationProgress | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -88,19 +95,19 @@ export function HomePage() {
         setMap(loadedMap);
         setCoverage(summarizeBrandCoverage(loadedMap));
         setPaletteLibrary(colorSystemMapping);
-
-        const totalSeeds = Array.from(colorSystemMapping.values()).reduce(
-          (sum, paletteColors) => sum + paletteColors.length,
-          0,
+        setRgbSeedCount(
+          Array.from(colorSystemMapping.values()).reduce(
+            (sum, paletteColors) => sum + paletteColors.length,
+            0,
+          ),
         );
-        setRgbSeedCount(totalSeeds);
       })
       .catch((loadError: unknown) => {
         if (!active) {
           return;
         }
 
-        setError(loadError instanceof Error ? loadError.message : "Unknown palette loading error");
+        setError(loadError instanceof Error ? loadError.message : "色板加载失败。");
       });
 
     return () => {
@@ -123,6 +130,7 @@ export function HomePage() {
   const currentPalette = paletteLibrary?.get(settings.brandId) ?? [];
   const generationPercent = generationProgress ? Math.round(generationProgress.progress * 100) : 0;
   const generationStageLabel = generationProgress ? generationStageLabels[generationProgress.stage] : null;
+  const backgroundHex = rgbToHex(settings.backgroundRgb);
 
   function cancelActiveGeneration() {
     activeTaskRef.current?.cancel();
@@ -138,6 +146,7 @@ export function HomePage() {
     setPattern(null);
     setPreviewMode("source");
     setHighlightedColorId(null);
+    setHoveredCell(null);
   }
 
   async function handleFileSelected(file: File | null) {
@@ -147,8 +156,7 @@ export function HomePage() {
 
     setError(null);
     try {
-      const nextImage = await loadSourceImageFromFile(file);
-      await replaceSourceImage(nextImage);
+      await replaceSourceImage(await loadSourceImageFromFile(file));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "图片导入失败。");
     }
@@ -157,8 +165,7 @@ export function HomePage() {
   async function handleLoadSampleImage() {
     setError(null);
     try {
-      const nextImage = await loadSourceImageFromUrl(demoSampleImageUrl, "mvp-sample.png");
-      await replaceSourceImage(nextImage);
+      await replaceSourceImage(await loadSourceImageFromUrl(demoSampleImageUrl, "demo-cat-garden.png"));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "样图加载失败。");
     }
@@ -172,10 +179,7 @@ export function HomePage() {
     cancelActiveGeneration();
     setIsGenerating(true);
     setError(null);
-    setGenerationProgress({
-      stage: "sampling",
-      progress: 0,
-    });
+    setGenerationProgress({ stage: "sampling", progress: 0 });
 
     const task = startPatternGenerationTask(sourceImage, settings, currentPalette, {
       onProgress: setGenerationProgress,
@@ -192,6 +196,7 @@ export function HomePage() {
         setPattern(nextPattern);
         setPreviewMode("pattern");
         setHighlightedColorId(null);
+        setHoveredCell(null);
       });
     } catch (generationError) {
       if (activeTaskRef.current?.taskId !== task.taskId) {
@@ -214,96 +219,28 @@ export function HomePage() {
 
   function updateSettings(patch: Partial<PatternSettings>) {
     cancelActiveGeneration();
-    setSettings((current) => ({
-      ...current,
-      ...patch,
-    }));
+    setSettings((current) => ({ ...current, ...patch }));
     setPattern(null);
     setHighlightedColorId(null);
+    setHoveredCell(null);
   }
 
-  async function handleExportFullPattern() {
-    if (!pattern) {
-      return;
-    }
-
+  async function runExport(action: () => Promise<void>, fallbackMessage: string) {
     setIsExporting(true);
     setError(null);
     try {
-      await exportFullPatternPng(pattern);
+      await action();
     } catch (exportError) {
-      setError(exportError instanceof Error ? exportError.message : "完整底稿导出失败。");
+      setError(exportError instanceof Error ? exportError.message : fallbackMessage);
     } finally {
       setIsExporting(false);
     }
   }
 
-  async function handleExportSeparatedSheets() {
-    if (!pattern) {
-      return;
-    }
-
-    setIsExporting(true);
-    setError(null);
-    try {
-      await exportSeparatedSheetsZip(pattern);
-    } catch (exportError) {
-      setError(exportError instanceof Error ? exportError.message : "分色图导出失败。");
-    } finally {
-      setIsExporting(false);
-    }
-  }
-
-  async function handleExportPurchaseListPng() {
-    if (!pattern) {
-      return;
-    }
-
-    setIsExporting(true);
-    setError(null);
-    try {
-      await exportPurchaseListPng(pattern, purchaseReserveRatio);
-    } catch (exportError) {
-      setError(exportError instanceof Error ? exportError.message : "采购清单 PNG 导出失败。");
-    } finally {
-      setIsExporting(false);
-    }
-  }
-
-  function handleExportPurchaseListCsv() {
-    if (!pattern) {
-      return;
-    }
-
-    setError(null);
-    try {
-      exportPurchaseListCsv(pattern, purchaseReserveRatio);
-    } catch (exportError) {
-      setError(exportError instanceof Error ? exportError.message : "采购清单 CSV 导出失败。");
-    }
-  }
-
-  async function handleExportBoardSplitZip() {
-    if (!pattern) {
-      return;
-    }
-
-    setIsExporting(true);
-    setError(null);
-    try {
-      await exportBoardSplitZip(pattern);
-    } catch (exportError) {
-      setError(exportError instanceof Error ? exportError.message : "底板拆分图导出失败。");
-    } finally {
-      setIsExporting(false);
-    }
-  }
-
-  function handleCancelGeneration() {
-    cancelActiveGeneration();
-  }
-
-  const backgroundHex = rgbToHex(settings.backgroundRgb);
+  const selectedUsage =
+    pattern && highlightedColorId
+      ? pattern.statistics.usages.find((usage) => usage.color.id === highlightedColorId) ?? null
+      : null;
 
   return (
     <main className="shell">
@@ -311,10 +248,10 @@ export function HomePage() {
         <div className="stack">
           <section className="panel hero">
             <span className="eyebrow">BeadGrid / MVP 原型</span>
-            <h1>现在已经可以导入图片、采样并生成第一版拼豆图纸。</h1>
+            <h1>导入正常图片后，直接预览拼豆图纸与导出成品。</h1>
             <p className="lede">
-              当前版本已经连通了图片导入、裁剪参数、透明像素处理、主导色采样、品牌映射、限色、区域清理、
-              预览和颜色统计。桌面 EXE、导出链路和 Worker 迁移还会继续补。
+              当前版本已经连通图片导入、裁剪、透明处理、主导色采样、品牌映射、限色、杂色清理、
+              图纸预览、采购清单、分色图与底板拆分导出。
             </p>
             <div className="pill-row">
               <div className="pill">
@@ -322,7 +259,7 @@ export function HomePage() {
                 <span>已接入的映射行数</span>
               </div>
               <div className="pill">
-                <strong>5</strong>
+                <strong>{coverage.length || "--"}</strong>
                 <span>当前识别到的品牌列</span>
               </div>
               <div className="pill">
@@ -343,8 +280,9 @@ export function HomePage() {
                 />
               </label>
               <button type="button" className="action-button secondary" onClick={() => void handleLoadSampleImage()}>
-                加载测试样图
+                加载真实测试图
               </button>
+
               <div className="two-up">
                 <label className="field">
                   <span>作品宽度</span>
@@ -367,6 +305,7 @@ export function HomePage() {
                   />
                 </label>
               </div>
+
               <div className="two-up">
                 <label className="field">
                   <span>底板宽度</span>
@@ -389,6 +328,7 @@ export function HomePage() {
                   />
                 </label>
               </div>
+
               <label className="field">
                 <span>品牌</span>
                 <select value={settings.brandId} onChange={(event) => updateSettings({ brandId: event.target.value })}>
@@ -399,6 +339,7 @@ export function HomePage() {
                   ))}
                 </select>
               </label>
+
               <div className="two-up">
                 <label className="field">
                   <span>裁剪方式</span>
@@ -427,6 +368,7 @@ export function HomePage() {
                   </select>
                 </label>
               </div>
+
               <label className="field">
                 <span>缩放 {settings.zoom.toFixed(2)}x</span>
                 <input
@@ -460,6 +402,7 @@ export function HomePage() {
                   onChange={(event) => updateSettings({ offsetY: Number(event.target.value) })}
                 />
               </label>
+
               <label className="checkbox-row">
                 <input
                   type="checkbox"
@@ -468,6 +411,7 @@ export function HomePage() {
                 />
                 <span>水平翻转</span>
               </label>
+
               <div className="two-up">
                 <label className="field">
                   <span>透明处理</span>
@@ -492,6 +436,7 @@ export function HomePage() {
                   />
                 </label>
               </div>
+
               <label className="field">
                 <span>透明阈值 {settings.alphaThreshold.toFixed(2)}</span>
                 <input
@@ -503,6 +448,7 @@ export function HomePage() {
                   onChange={(event) => updateSettings({ alphaThreshold: Number(event.target.value) })}
                 />
               </label>
+
               <div className="two-up">
                 <label className="field">
                   <span>最大颜色数</span>
@@ -518,9 +464,7 @@ export function HomePage() {
                   <span>杂色清理</span>
                   <select
                     value={settings.cleanupLevel}
-                    onChange={(event) =>
-                      updateSettings({ cleanupLevel: event.target.value as CleanupLevel })
-                    }
+                    onChange={(event) => updateSettings({ cleanupLevel: event.target.value as CleanupLevel })}
                   >
                     <option value="off">关闭</option>
                     <option value="light">轻度</option>
@@ -529,8 +473,11 @@ export function HomePage() {
                   </select>
                 </label>
               </div>
+
               <label className="field">
-                <span>单格采样密度 {settings.sampleGridSize}×{settings.sampleGridSize}</span>
+                <span>
+                  单格采样密度 {settings.sampleGridSize}×{settings.sampleGridSize}
+                </span>
                 <input
                   type="range"
                   min={3}
@@ -540,6 +487,7 @@ export function HomePage() {
                   onChange={(event) => updateSettings({ sampleGridSize: Number(event.target.value) })}
                 />
               </label>
+
               <button
                 type="button"
                 className="action-button"
@@ -551,7 +499,7 @@ export function HomePage() {
                   : "生成拼豆图纸"}
               </button>
               {isGenerating ? (
-                <button type="button" className="action-button secondary" onClick={handleCancelGeneration}>
+                <button type="button" className="action-button secondary" onClick={cancelActiveGeneration}>
                   取消生成
                 </button>
               ) : null}
@@ -573,6 +521,7 @@ export function HomePage() {
                 <span>当前图片</span>
               </div>
             </div>
+
             {isGenerating && generationStageLabel ? (
               <div className="progress-box">
                 <div className="progress-copy">
@@ -584,6 +533,7 @@ export function HomePage() {
                 </div>
               </div>
             ) : null}
+
             {error ? <div className="error-box" style={{ marginTop: "14px" }}>{error}</div> : null}
           </Panel>
         </div>
@@ -614,13 +564,38 @@ export function HomePage() {
             <div className="preview-toolbar">
               <label className="checkbox-row compact">
                 <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />
-                <span>显示网格</span>
+                <span>1×1 网格</span>
+              </label>
+              <label className="checkbox-row compact">
+                <input
+                  type="checkbox"
+                  checked={showFiveByFiveGrid}
+                  onChange={(event) => setShowFiveByFiveGrid(event.target.checked)}
+                />
+                <span>5×5 小格</span>
+              </label>
+              <label className="checkbox-row compact">
+                <input
+                  type="checkbox"
+                  checked={showBoardBoundaries}
+                  onChange={(event) => setShowBoardBoundaries(event.target.checked)}
+                />
+                <span>底板分界</span>
               </label>
               <label className="checkbox-row compact">
                 <input type="checkbox" checked={showCodes} onChange={(event) => setShowCodes(event.target.checked)} />
                 <span>显示色号</span>
               </label>
+              <label className="checkbox-row compact">
+                <input
+                  type="checkbox"
+                  checked={showCoordinates}
+                  onChange={(event) => setShowCoordinates(event.target.checked)}
+                />
+                <span>显示坐标</span>
+              </label>
             </div>
+
             <div className="preview-frame">
               {previewMode === "source" ? (
                 <SourcePreviewCanvas sourceImage={sourceImage} settings={settings} />
@@ -629,10 +604,31 @@ export function HomePage() {
                   pattern={pattern}
                   showGrid={showGrid}
                   showCodes={showCodes}
+                  showFiveByFiveGrid={showFiveByFiveGrid}
+                  showBoardBoundaries={showBoardBoundaries}
+                  showCoordinates={showCoordinates}
                   highlightedColorId={highlightedColorId}
                   onColorPick={setHighlightedColorId}
+                  onHoverChange={setHoveredCell}
                 />
               )}
+            </div>
+
+            <div className="preview-meta">
+              <div className="preview-chip">
+                <strong>悬停坐标</strong>
+                <span>
+                  {hoveredCell ? `${hoveredCell.x + 1}, ${hoveredCell.y + 1}` : "移动到图纸上查看"}
+                </span>
+              </div>
+              <div className="preview-chip">
+                <strong>悬停色号</strong>
+                <span>{hoveredCell?.code ?? "-"}</span>
+              </div>
+              <div className="preview-chip">
+                <strong>颜色名称</strong>
+                <span>{hoveredCell?.nameZh ?? "-"}</span>
+              </div>
             </div>
           </Panel>
 
@@ -670,7 +666,12 @@ export function HomePage() {
                   <button
                     type="button"
                     className="action-button"
-                    onClick={() => void handleExportFullPattern()}
+                    onClick={() =>
+                      void runExport(
+                        () => exportFullPatternPng(pattern),
+                        "完整底稿导出失败。",
+                      )
+                    }
                     disabled={isExporting}
                   >
                     {isExporting ? "导出中..." : "导出完整底稿 PNG"}
@@ -678,7 +679,12 @@ export function HomePage() {
                   <button
                     type="button"
                     className="action-button secondary"
-                    onClick={() => void handleExportSeparatedSheets()}
+                    onClick={() =>
+                      void runExport(
+                        () => exportSeparatedSheetsZip(pattern),
+                        "分色图导出失败。",
+                      )
+                    }
                     disabled={isExporting}
                   >
                     导出分色图 ZIP
@@ -697,7 +703,12 @@ export function HomePage() {
                   <button
                     type="button"
                     className="action-button secondary"
-                    onClick={() => void handleExportPurchaseListPng()}
+                    onClick={() =>
+                      void runExport(
+                        () => exportPurchaseListPng(pattern, purchaseReserveRatio),
+                        "采购清单 PNG 导出失败。",
+                      )
+                    }
                     disabled={isExporting}
                   >
                     导出采购清单 PNG
@@ -705,7 +716,12 @@ export function HomePage() {
                   <button
                     type="button"
                     className="action-button secondary"
-                    onClick={handleExportPurchaseListCsv}
+                    onClick={() =>
+                      void runExport(
+                        () => exportPurchaseListCsv(pattern, purchaseReserveRatio),
+                        "采购清单 CSV 导出失败。",
+                      )
+                    }
                     disabled={isExporting}
                   >
                     导出采购清单 CSV
@@ -713,12 +729,18 @@ export function HomePage() {
                   <button
                     type="button"
                     className="action-button secondary"
-                    onClick={() => void handleExportBoardSplitZip()}
+                    onClick={() =>
+                      void runExport(
+                        () => exportBoardSplitZip(pattern),
+                        "底板拆分图导出失败。",
+                      )
+                    }
                     disabled={isExporting}
                   >
                     导出底板拆分图 ZIP
                   </button>
                 </div>
+
                 <div className="metric-grid">
                   <div className="metric">
                     <strong>{pattern.statistics.filledCells}</strong>
@@ -733,12 +755,25 @@ export function HomePage() {
                     <span>实际颜色数</span>
                   </div>
                 </div>
+
+                {selectedUsage ? (
+                  <div className="preview-chip selected-color-chip">
+                    <strong>当前高亮</strong>
+                    <span>
+                      {selectedUsage.color.code}
+                      {selectedUsage.color.nameZh ? ` · ${selectedUsage.color.nameZh}` : ""}
+                      {` · ${selectedUsage.count} 颗`}
+                    </span>
+                  </div>
+                ) : null}
+
                 <div className="table-wrap" style={{ marginTop: "14px" }}>
                   <table>
                     <thead>
                       <tr>
                         <th>色块</th>
                         <th>色号</th>
+                        <th>名称</th>
                         <th>数量</th>
                       </tr>
                     </thead>
@@ -758,6 +793,7 @@ export function HomePage() {
                             />
                           </td>
                           <td>{usage.color.code}</td>
+                          <td>{usage.color.nameZh ?? "-"}</td>
                           <td>{usage.count}</td>
                         </tr>
                       ))}
