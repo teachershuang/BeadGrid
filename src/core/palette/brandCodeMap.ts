@@ -1,6 +1,8 @@
 import { paletteBrands } from "@/core/palette/brands";
 import type { BrandCodeMap, BrandCodeMapRow, BrandCoverageSummary } from "@/types/palette";
 
+const brandCodeMapUrl = new URL("../../assets/palettes/brand-code-map.csv", import.meta.url).href;
+
 function stripBom(input: string) {
   return input.replace(/^\uFEFF/, "");
 }
@@ -93,13 +95,11 @@ export function summarizeBrandCoverage(map: BrandCodeMap): BrandCoverageSummary[
 }
 
 export async function loadBrandCodeMap(fetchImpl: typeof fetch = fetch) {
-  const response = await fetchImpl("/palettes/brand-code-map.csv");
+  const response = await fetchImpl(brandCodeMapUrl);
 
   if (!response.ok) {
     throw new Error(`Failed to load palette mapping CSV: ${response.status} ${response.statusText}`);
   }
 
-  const csv = await response.text();
-  return parseBrandCodeMapCsv(csv);
+  return parseBrandCodeMapCsv(await response.text());
 }
-

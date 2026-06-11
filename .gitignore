@@ -7,4 +7,7 @@ Thumbs.db
 .vite/
 *.tsbuildinfo
 .playwright-mcp/
-*.png
+beadgrid-home.png
+.vite-dev.log
+.vite-dev.err.log
+项目mvp.md

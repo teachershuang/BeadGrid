@@ -5,7 +5,7 @@ import { parseBrandCodeMapCsv, summarizeBrandCoverage } from "@/core/palette/bra
 
 describe("brand code map parser", () => {
   it("parses the checked-in mapping csv", () => {
-    const csv = readFileSync(resolve(process.cwd(), "public/palettes/brand-code-map.csv"), "utf8");
+    const csv = readFileSync(resolve(process.cwd(), "src/assets/palettes/brand-code-map.csv"), "utf8");
     const map = parseBrandCodeMapCsv(csv);
 
     expect(map.brands).toHaveLength(5);
@@ -22,7 +22,7 @@ describe("brand code map parser", () => {
   });
 
   it("summarizes coverage by brand", () => {
-    const csv = readFileSync(resolve(process.cwd(), "public/palettes/brand-code-map.csv"), "utf8");
+    const csv = readFileSync(resolve(process.cwd(), "src/assets/palettes/brand-code-map.csv"), "utf8");
     const map = parseBrandCodeMapCsv(csv);
     const coverage = summarizeBrandCoverage(map);
 

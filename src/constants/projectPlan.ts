@@ -9,43 +9,42 @@ export const mvpFeatures = [
 
 export const milestonePlan = [
   {
-    title: "Milestone 1",
+    title: "阶段 1",
     detail: "仓库脚手架、文档、测试基座、色号映射表接入",
   },
   {
-    title: "Milestone 2",
+    title: "阶段 2",
     detail: "颜色空间转换、色差算法、色板校验与真实 RGB 色板格式",
   },
   {
-    title: "Milestone 3",
+    title: "阶段 3",
     detail: "图片导入、裁剪状态、透明像素策略与采样准备",
   },
   {
-    title: "Milestone 4",
+    title: "阶段 4",
     detail: "单格区域采样、主导色提取、品牌映射、颜色数量限制",
   },
   {
-    title: "Milestone 5",
+    title: "阶段 5",
     detail: "BFS 杂色清理、Worker 管线、预览、统计、导出和 Tauri 壳",
   },
 ];
 
 export const architectureTracks = [
   {
-    label: "Domain types",
+    label: "领域类型",
     code: "src/types/*",
   },
   {
-    label: "Color math",
+    label: "颜色数学",
     code: "src/core/color/*",
   },
   {
-    label: "Palette ingestion",
+    label: "色板读取",
     code: "src/core/palette/*",
   },
   {
-    label: "UI composition",
+    label: "界面组织",
     code: "src/pages + src/components",
   },
 ];
-
