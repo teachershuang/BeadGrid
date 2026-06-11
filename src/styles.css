@@ -327,6 +327,12 @@ th {
   color: #116f67;
 }
 
+.export-actions {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
 .action-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;

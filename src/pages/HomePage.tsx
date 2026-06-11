@@ -4,6 +4,7 @@ import { PatternPreviewCanvas } from "@/components/PatternPreviewCanvas";
 import { SourcePreviewCanvas } from "@/components/SourcePreviewCanvas";
 import demoSampleImageUrl from "@/assets/mvp-sample.png";
 import { parseHexColor, rgbToHex } from "@/core/color/utils";
+import { exportFullPatternPng, exportSeparatedSheetsZip } from "@/core/export/exportPattern";
 import {
   disposeLoadedSourceImage,
   loadSourceImageFromFile,
@@ -50,6 +51,7 @@ export function HomePage() {
   const [showCodes, setShowCodes] = useState(false);
   const [highlightedColorId, setHighlightedColorId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -154,6 +156,38 @@ export function HomePage() {
     }));
     setPattern(null);
     setHighlightedColorId(null);
+  }
+
+  async function handleExportFullPattern() {
+    if (!pattern) {
+      return;
+    }
+
+    setIsExporting(true);
+    setError(null);
+    try {
+      await exportFullPatternPng(pattern);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "完整底稿导出失败。");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  async function handleExportSeparatedSheets() {
+    if (!pattern) {
+      return;
+    }
+
+    setIsExporting(true);
+    setError(null);
+    try {
+      await exportSeparatedSheetsZip(pattern);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "分色图导出失败。");
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   const backgroundHex = rgbToHex(settings.backgroundRgb);
@@ -501,6 +535,24 @@ export function HomePage() {
           <Panel title="统计与颜色用量" eyebrow="右侧">
             {pattern ? (
               <>
+                <div className="export-actions">
+                  <button
+                    type="button"
+                    className="action-button"
+                    onClick={() => void handleExportFullPattern()}
+                    disabled={isExporting}
+                  >
+                    {isExporting ? "导出中..." : "导出完整底稿 PNG"}
+                  </button>
+                  <button
+                    type="button"
+                    className="action-button secondary"
+                    onClick={() => void handleExportSeparatedSheets()}
+                    disabled={isExporting}
+                  >
+                    导出分色图 ZIP
+                  </button>
+                </div>
                 <div className="metric-grid">
                   <div className="metric">
                     <strong>{pattern.statistics.filledCells}</strong>
