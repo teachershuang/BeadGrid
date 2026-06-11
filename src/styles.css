@@ -1,0 +1,274 @@
+:root {
+  font-family: "Bahnschrift", "Segoe UI Variable Display", "Microsoft YaHei UI", sans-serif;
+  color: #11211f;
+  background:
+    radial-gradient(circle at top left, rgba(255, 190, 92, 0.3), transparent 28%),
+    radial-gradient(circle at right center, rgba(17, 111, 103, 0.22), transparent 32%),
+    linear-gradient(180deg, #f7f0e4 0%, #f1ece2 54%, #ece6db 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.shell {
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
+  gap: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.stack {
+  display: grid;
+  gap: 20px;
+}
+
+.panel {
+  border: 1px solid rgba(17, 33, 31, 0.12);
+  background: rgba(255, 252, 245, 0.78);
+  backdrop-filter: blur(14px);
+  border-radius: 28px;
+  padding: 22px;
+  box-shadow: 0 20px 60px rgba(49, 45, 36, 0.08);
+}
+
+.hero {
+  overflow: hidden;
+  position: relative;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: auto -20% -40% auto;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(17, 111, 103, 0.18), transparent 70%);
+  pointer-events: none;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(17, 111, 103, 0.08);
+  color: #116f67;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hero h1,
+.panel h2,
+.panel h3 {
+  margin: 0;
+}
+
+.hero h1 {
+  margin-top: 16px;
+  font-size: clamp(2.3rem, 3vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  max-width: 10ch;
+}
+
+.lede {
+  margin: 18px 0 0;
+  max-width: 62ch;
+  color: rgba(17, 33, 31, 0.82);
+  font-size: 1.02rem;
+}
+
+.pill-row,
+.metric-grid,
+.milestone-list,
+.bullet-list,
+.code-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.pill-row {
+  margin-top: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.pill {
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: rgba(17, 111, 103, 0.07);
+  border: 1px solid rgba(17, 111, 103, 0.1);
+}
+
+.pill strong,
+.metric strong {
+  display: block;
+  font-size: 1.2rem;
+}
+
+.pill span,
+.metric span,
+.muted {
+  color: rgba(17, 33, 31, 0.68);
+}
+
+.section-title {
+  margin-bottom: 14px;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+}
+
+.bullet-list {
+  padding-left: 18px;
+  margin: 0;
+}
+
+.bullet-list li {
+  margin: 0;
+}
+
+.code-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.code-card,
+.metric,
+.milestone-item {
+  border-radius: 18px;
+  border: 1px solid rgba(17, 33, 31, 0.1);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.code-card {
+  padding: 16px;
+}
+
+.code-card code {
+  display: block;
+  margin-top: 8px;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 0.92rem;
+  color: #8d4e00;
+  white-space: pre-wrap;
+}
+
+.metric-grid {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.metric {
+  padding: 16px;
+}
+
+.status-ok {
+  color: #116f67;
+}
+
+.status-warn {
+  color: #8d4e00;
+}
+
+.milestone-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.milestone-item {
+  padding: 16px 18px;
+}
+
+.milestone-item strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 12px 10px;
+  border-bottom: 1px solid rgba(17, 33, 31, 0.1);
+}
+
+th {
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(17, 33, 31, 0.68);
+}
+
+.empty,
+.error-box {
+  padding: 16px;
+  border-radius: 18px;
+}
+
+.empty {
+  background: rgba(17, 111, 103, 0.06);
+}
+
+.error-box {
+  background: rgba(141, 78, 0, 0.08);
+  border: 1px solid rgba(141, 78, 0, 0.18);
+  color: #6a3a00;
+}
+
+@media (max-width: 960px) {
+  .shell {
+    padding: 16px;
+  }
+
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .hero h1 {
+    max-width: none;
+  }
+}
+
