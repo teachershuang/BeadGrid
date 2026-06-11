@@ -7,6 +7,14 @@ export interface PurchaseListItem {
   recommendedCount: number;
 }
 
+export interface PurchaseListCsvRow {
+  brandId: string;
+  code: string;
+  nameZh: string;
+  count: number;
+  recommendedCount: number;
+}
+
 export function buildPurchaseList(
   pattern: GeneratedPattern,
   reserveRatio: number,
@@ -18,15 +26,14 @@ export function buildPurchaseList(
   }));
 }
 
-export interface PurchaseListCsvRow {
-  code: string;
-  count: number;
-  recommendedCount: number;
-}
-
-export function buildPurchaseListCsvRows(pattern: GeneratedPattern, reserveRatio: number): PurchaseListCsvRow[] {
+export function buildPurchaseListCsvRows(
+  pattern: GeneratedPattern,
+  reserveRatio: number,
+): PurchaseListCsvRow[] {
   return buildPurchaseList(pattern, reserveRatio).map((item) => ({
+    brandId: item.color.brandId,
     code: item.color.code,
+    nameZh: item.color.nameZh ?? "",
     count: item.count,
     recommendedCount: item.recommendedCount,
   }));
@@ -34,6 +41,22 @@ export function buildPurchaseListCsvRows(pattern: GeneratedPattern, reserveRatio
 
 export function buildPurchaseListCsv(pattern: GeneratedPattern, reserveRatio: number) {
   const rows = buildPurchaseListCsvRows(pattern, reserveRatio);
-  const header = ["色号", "实际数量", "建议准备数量"];
-  return [header.join(","), ...rows.map((row) => [row.code, row.count, row.recommendedCount].join(","))].join("\n");
+  const header = ["品牌", "色号", "中文名称", "实际数量", "建议准备数量"];
+  const csvRows = rows.map((row) => [
+    row.brandId.toUpperCase(),
+    row.code,
+    escapeCsvValue(row.nameZh),
+    String(row.count),
+    String(row.recommendedCount),
+  ]);
+
+  return ["\uFEFF" + header.join(","), ...csvRows.map((row) => row.join(","))].join("\r\n");
+}
+
+function escapeCsvValue(value: string) {
+  if (!value.includes(",") && !value.includes("\"") && !value.includes("\n")) {
+    return value;
+  }
+
+  return `"${value.replaceAll("\"", "\"\"")}"`;
 }

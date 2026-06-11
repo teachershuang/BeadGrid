@@ -409,6 +409,35 @@ th {
   aspect-ratio: 1;
 }
 
+.preview-meta {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.preview-chip {
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(17, 33, 31, 0.1);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.preview-chip strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.86rem;
+}
+
+.preview-chip span {
+  color: rgba(17, 33, 31, 0.76);
+  word-break: break-word;
+}
+
+.selected-color-chip {
+  margin-top: 14px;
+}
+
 .swatch {
   display: inline-block;
   width: 22px;
@@ -432,5 +461,9 @@ th {
 
   .hero h1 {
     max-width: none;
+  }
+
+  .preview-meta {
+    grid-template-columns: 1fr;
   }
 }
