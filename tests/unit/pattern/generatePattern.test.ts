@@ -3,6 +3,7 @@ import { rgbToLab } from "@/core/color/conversion";
 import { generatePattern } from "@/core/pattern/generatePattern";
 import type { PixelSourceImage, PatternSettings } from "@/types/image";
 import type { PaletteColor } from "@/types/palette";
+import { PatternGenerationAbortedError } from "@/types/patternGeneration";
 
 const palette: PaletteColor[] = [
   {
@@ -66,5 +67,49 @@ describe("generatePattern", () => {
 
     const pattern = generatePattern(image, settings, palette);
     expect(pattern.statistics.actualColorCount).toBeLessThanOrEqual(2);
+  });
+
+  it("reports progress across generation stages", () => {
+    const image: PixelSourceImage = {
+      width: 2,
+      height: 2,
+      data: new Uint8ClampedArray([
+        255, 0, 0, 255,
+        0, 255, 0, 255,
+        0, 0, 255, 255,
+        255, 0, 0, 255,
+      ]),
+    };
+    const stages = new Set<string>();
+    let finalProgress = 0;
+
+    generatePattern(image, settings, palette, {
+      onProgress: (progress) => {
+        stages.add(progress.stage);
+        finalProgress = progress.progress;
+      },
+    });
+
+    expect(stages).toEqual(new Set(["sampling", "max-colors", "matching", "cleanup", "statistics"]));
+    expect(finalProgress).toBe(1);
+  });
+
+  it("aborts before doing work when the task is canceled", () => {
+    const image: PixelSourceImage = {
+      width: 2,
+      height: 2,
+      data: new Uint8ClampedArray([
+        255, 0, 0, 255,
+        0, 255, 0, 255,
+        0, 0, 255, 255,
+        255, 0, 0, 255,
+      ]),
+    };
+
+    expect(() =>
+      generatePattern(image, settings, palette, {
+        shouldAbort: () => true,
+      }),
+    ).toThrow(PatternGenerationAbortedError);
   });
 });

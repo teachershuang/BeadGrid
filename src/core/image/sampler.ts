@@ -2,6 +2,7 @@ import { rgbToLab } from "@/core/color/conversion";
 import { compositeRgb, quantizeRgb, rgbDistanceSquared, rgbToHex } from "@/core/color/utils";
 import type { LabColor, RgbColor } from "@/types/color";
 import type { CropSettings, PixelSourceImage, SamplingSettings, TargetCell } from "@/types/image";
+import { throwIfPatternGenerationAborted } from "@/types/patternGeneration";
 
 interface SamplePoint {
   rgb: RgbColor;
@@ -306,10 +307,16 @@ export function generateTargetCells(
   artworkHeight: number,
   cropSettings: CropSettings,
   samplingSettings: SamplingSettings,
+  options: {
+    onProgress?: (progress: number) => void;
+    shouldAbort?: () => boolean;
+  } = {},
 ): TargetCell[] {
   const cells: TargetCell[] = [];
 
   for (let y = 0; y < artworkHeight; y += 1) {
+    throwIfPatternGenerationAborted(options.shouldAbort);
+
     for (let x = 0; x < artworkWidth; x += 1) {
       const dominant = sampleTargetCell(
         image,
@@ -328,6 +335,8 @@ export function generateTargetCells(
         lab: dominant?.lab ?? null,
       });
     }
+
+    options.onProgress?.((y + 1) / artworkHeight);
   }
 
   return cells;
