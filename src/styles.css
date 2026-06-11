@@ -45,10 +45,11 @@ a {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
+  grid-template-columns: minmax(280px, 0.9fr) minmax(460px, 1.3fr) minmax(300px, 0.9fr);
   gap: 20px;
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
+  align-items: start;
 }
 
 .stack {
@@ -258,6 +259,129 @@ th {
   color: #6a3a00;
 }
 
+.form-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field span {
+  font-size: 0.92rem;
+  color: rgba(17, 33, 31, 0.8);
+}
+
+.field input[type="number"],
+.field input[type="file"],
+.field input[type="color"],
+.field select {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(17, 33, 31, 0.16);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.field input[type="range"] {
+  width: 100%;
+}
+
+.two-up {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(17, 33, 31, 0.82);
+}
+
+.checkbox-row.compact {
+  font-size: 0.92rem;
+}
+
+.action-button,
+.mini-button {
+  border: 0;
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.action-button {
+  min-height: 46px;
+  padding: 0 18px;
+  background: #116f67;
+  color: #fff9f2;
+  font-weight: 700;
+}
+
+.action-button.secondary {
+  background: rgba(17, 111, 103, 0.1);
+  color: #116f67;
+}
+
+.action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.inline-actions,
+.preview-toolbar {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.mini-button {
+  padding: 8px 12px;
+  background: rgba(17, 33, 31, 0.08);
+  color: rgba(17, 33, 31, 0.8);
+}
+
+.mini-button.is-active {
+  background: #116f67;
+  color: #fff9f2;
+}
+
+.preview-toolbar {
+  margin-bottom: 12px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.preview-frame {
+  border-radius: 22px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(17, 33, 31, 0.08);
+}
+
+.preview-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.swatch {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  border: 1px solid rgba(17, 33, 31, 0.18);
+}
+
+.row-highlight td {
+  background: rgba(17, 111, 103, 0.08);
+}
+
 @media (max-width: 960px) {
   .shell {
     padding: 16px;
@@ -271,4 +395,3 @@ th {
     max-width: none;
   }
 }
-
