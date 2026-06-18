@@ -56,20 +56,22 @@ jobs:
             throw 'NSIS installer not found.'
           }
 
-          $portableExe = 'src-tauri/target/release/BeadGrid.exe'
-          if (-not (Test-Path $portableExe)) {
-            throw 'Portable executable not found at src-tauri/target/release/BeadGrid.exe.'
+          $portableExe = Get-ChildItem 'src-tauri/target/release/*.exe' |
+            Where-Object { $_.Name -notlike '*setup*' } |
+            Select-Object -First 1
+          if (-not $portableExe) {
+            throw 'Portable executable not found in src-tauri/target/release.'
           }
 
           Copy-Item $setup.FullName 'release-assets/BeadGrid-Setup-x64.exe' -Force
-          Compress-Archive -Path $portableExe -DestinationPath 'release-assets/BeadGrid-Portable-x64.zip' -Force
+          Copy-Item $portableExe.FullName 'release-assets/BeadGrid-x64.exe' -Force
 
           $setupHash = (Get-FileHash 'release-assets/BeadGrid-Setup-x64.exe' -Algorithm SHA256).Hash
-          $portableHash = (Get-FileHash 'release-assets/BeadGrid-Portable-x64.zip' -Algorithm SHA256).Hash
+          $portableHash = (Get-FileHash 'release-assets/BeadGrid-x64.exe' -Algorithm SHA256).Hash
 
           @(
             "$setupHash  BeadGrid-Setup-x64.exe"
-            "$portableHash  BeadGrid-Portable-x64.zip"
+            "$portableHash  BeadGrid-x64.exe"
           ) | Set-Content 'release-assets/SHA256SUMS.txt' -Encoding utf8
 
       - name: Create or update GitHub Release
@@ -83,7 +85,7 @@ jobs:
             ''
             'Assets:'
             '- BeadGrid-Setup-x64.exe: installer'
-            '- BeadGrid-Portable-x64.zip: portable build'
+            '- BeadGrid-x64.exe: portable executable'
             '- SHA256SUMS.txt: checksums'
           ) -join "`n"
 
@@ -91,14 +93,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             gh release create $tag `
               "release-assets/BeadGrid-Setup-x64.exe" `
-              "release-assets/BeadGrid-Portable-x64.zip" `
+              "release-assets/BeadGrid-x64.exe" `
               "release-assets/SHA256SUMS.txt" `
               --title $tag `
               --notes $notes
           } else {
             gh release upload $tag `
               "release-assets/BeadGrid-Setup-x64.exe" `
-              "release-assets/BeadGrid-Portable-x64.zip" `
+              "release-assets/BeadGrid-x64.exe" `
               "release-assets/SHA256SUMS.txt" `
               --clobber
           }
