@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState, type DragEvent } from "react";
 import demoSampleImageUrl from "@/assets/demo-cat-garden.png";
 import { Panel } from "@/components/Panel";
 import {
@@ -60,8 +60,12 @@ const generationStageLabels: Record<PatternGenerationStage, string> = {
   statistics: "统计汇总",
 };
 
+const supportedImageExtensions = [".png", ".jpg", ".jpeg", ".webp"];
+const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+
 export function HomePage() {
   const activeTaskRef = useRef<PatternGenerationTask | null>(null);
+  const dragDepthRef = useRef(0);
   const [map, setMap] = useState<BrandCodeMap | null>(null);
   const [coverage, setCoverage] = useState<BrandCoverageSummary[]>([]);
   const [paletteLibrary, setPaletteLibrary] = useState<Map<string, PaletteColor[]> | null>(null);
@@ -80,6 +84,7 @@ export function HomePage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState<PatternGenerationProgress | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [purchaseReserveRatio, setPurchaseReserveRatio] = useState(0.05);
   const [error, setError] = useState<string | null>(null);
 
@@ -170,6 +175,72 @@ export function HomePage() {
     }
   }
 
+  function isSupportedImageFile(file: File) {
+    const lowerName = file.name.toLowerCase();
+    return (
+      supportedImageTypes.has(file.type) ||
+      supportedImageExtensions.some((extension) => lowerName.endsWith(extension))
+    );
+  }
+
+  function hasDraggingFiles(event: DragEvent<HTMLElement>) {
+    return Array.from(event.dataTransfer.types).includes("Files");
+  }
+
+  function resetDragState() {
+    dragDepthRef.current = 0;
+    setIsDraggingFile(false);
+  }
+
+  function handleDragEnter(event: DragEvent<HTMLElement>) {
+    if (!hasDraggingFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDraggingFile(true);
+  }
+
+  function handleDragOver(event: DragEvent<HTMLElement>) {
+    if (!hasDraggingFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDraggingFile(true);
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLElement>) {
+    if (!hasDraggingFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDraggingFile(false);
+    }
+  }
+
+  async function handleDrop(event: DragEvent<HTMLElement>) {
+    if (!hasDraggingFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    resetDragState();
+
+    const file = Array.from(event.dataTransfer.files).find(isSupportedImageFile) ?? null;
+    if (!file) {
+      setError("请拖入 PNG、JPG、JPEG 或 WebP 图片。");
+      return;
+    }
+
+    await handleFileSelected(file);
+  }
+
   async function handleLoadSampleImage() {
     setError(null);
     try {
@@ -247,7 +318,19 @@ export function HomePage() {
 
   return (
     <main className="shell">
-      <div className="app-window">
+      <div
+        className={`app-window ${isDraggingFile ? "is-dragging-file" : ""}`}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={(event) => void handleDrop(event)}
+      >
+        <div className="drop-overlay" aria-hidden={!isDraggingFile}>
+          <div className="drop-overlay-card">
+            <strong>松开导入图片</strong>
+            <span>支持 PNG、JPG、JPEG、WebP</span>
+          </div>
+        </div>
         <header className="app-topbar">
           <div className="app-topbar-main">
             <div className="window-dots" aria-hidden="true">
@@ -285,6 +368,10 @@ export function HomePage() {
               <div className="form-grid">
                 <div className="control-section">
                   <div className="section-kicker">图片来源</div>
+                  <div className="drop-hint">
+                    <strong>拖入图片即可开始</strong>
+                    <span>也可以点击下方文件按钮选择图片。</span>
+                  </div>
                   <label className="field">
                     <span>导入图片</span>
                     <input
