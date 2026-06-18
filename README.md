@@ -92,22 +92,6 @@ Windows 桌面构建：
 - `MSVC v143 - VS 2022 C++ x64/x86 build tools`
 - Windows 10/11 SDK
 
-## Release
-
-仓库已配置 GitHub Actions 的 Windows Release 流程，可在 Windows runner 上执行：
-
-- `lint`
-- `test`
-- 前端构建
-- Tauri 桌面构建
-- 生成并上传发布产物
-
-默认发布资产包括：
-
-- `BeadGrid-x64.exe`：可直接运行的便携版 exe
-- `BeadGrid-Setup-x64.exe`：Windows 安装包
-- `SHA256SUMS.txt`：校验文件
-
 ## 项目结构
 
 ```text
