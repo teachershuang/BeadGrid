@@ -328,6 +328,53 @@ a {
   gap: 12px;
 }
 
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.preset-button {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 12px 14px;
+  border: 1px solid rgba(23, 41, 38, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #172926;
+  text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.preset-button strong {
+  font-size: 0.94rem;
+  line-height: 1.2;
+}
+
+.preset-button span {
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.preset-button.is-active {
+  border-color: rgba(18, 95, 88, 0.35);
+  background: rgba(22, 110, 103, 0.12);
+  box-shadow: 0 12px 24px rgba(18, 95, 88, 0.12);
+}
+
+.preset-button.is-static {
+  cursor: default;
+}
+
+.size-summary {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(250, 246, 240, 0.82);
+  color: #5d5045;
+  font-size: 0.88rem;
+}
+
 .checkbox-row {
   display: inline-flex;
   gap: 10px;

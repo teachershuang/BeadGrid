@@ -62,6 +62,13 @@ const generationStageLabels: Record<PatternGenerationStage, string> = {
 
 const supportedImageExtensions = [".png", ".jpg", ".jpeg", ".webp"];
 const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+const boardPresetMultipliers = [1, 2, 3, 4];
+const commonArtworkPresets = [
+  { label: "48 × 48", width: 48, height: 48, hint: "适合头像与贴纸" },
+  { label: "72 × 72", width: 72, height: 72, hint: "细节更完整" },
+  { label: "100 × 100", width: 100, height: 100, hint: "适合完整立绘" },
+  { label: "128 × 128", width: 128, height: 128, hint: "适合大图测试" },
+] as const;
 
 export function HomePage() {
   const activeTaskRef = useRef<PatternGenerationTask | null>(null);
@@ -140,6 +147,34 @@ export function HomePage() {
     map?.brands.find((brand) => brand.id === settings.brandId)?.nameZh ?? settings.brandId.toUpperCase();
   const boardColumns = Math.ceil(settings.artworkWidth / settings.boardWidth);
   const boardRows = Math.ceil(settings.artworkHeight / settings.boardHeight);
+  const sizePresetMap = new Map<
+    string,
+    { label: string; width: number; height: number; hint: string }
+  >();
+
+  for (const multiplier of boardPresetMultipliers) {
+    const width = settings.boardWidth * multiplier;
+    const height = settings.boardHeight * multiplier;
+    const key = `${width}x${height}`;
+    sizePresetMap.set(key, {
+      label: `${multiplier} × ${multiplier} 板`,
+      width,
+      height,
+      hint: `${width} × ${height}`,
+    });
+  }
+
+  for (const preset of commonArtworkPresets) {
+    const key = `${preset.width}x${preset.height}`;
+    if (!sizePresetMap.has(key)) {
+      sizePresetMap.set(key, preset);
+    }
+  }
+
+  const sizePresets = Array.from(sizePresetMap.values());
+  const isCustomArtworkSize = !sizePresets.some(
+    (preset) => preset.width === settings.artworkWidth && preset.height === settings.artworkHeight,
+  );
   const selectedUsage =
     pattern && highlightedColorId
       ? pattern.statistics.usages.find((usage) => usage.color.id === highlightedColorId) ?? null
@@ -304,6 +339,10 @@ export function HomePage() {
     setHoveredCell(null);
   }
 
+  function applyArtworkPreset(width: number, height: number) {
+    updateSettings({ artworkWidth: width, artworkHeight: height });
+  }
+
   async function runExport(action: () => Promise<void>, fallbackMessage: string) {
     setIsExporting(true);
     setError(null);
@@ -422,6 +461,35 @@ export function HomePage() {
                         onChange={(event) => updateSettings({ artworkHeight: Number(event.target.value) || 8 })}
                       />
                     </label>
+                  </div>
+                  <div className="field">
+                    <span>常用尺寸预设</span>
+                    <div className="preset-grid" role="list" aria-label="常用尺寸预设">
+                      {sizePresets.map((preset) => {
+                        const isActive =
+                          preset.width === settings.artworkWidth && preset.height === settings.artworkHeight;
+
+                        return (
+                          <button
+                            key={`${preset.width}x${preset.height}`}
+                            type="button"
+                            className={`preset-button ${isActive ? "is-active" : ""}`}
+                            onClick={() => applyArtworkPreset(preset.width, preset.height)}
+                            aria-pressed={isActive}
+                          >
+                            <strong>{preset.label}</strong>
+                            <span>{preset.hint}</span>
+                          </button>
+                        );
+                      })}
+                      <div className={`preset-button is-static ${isCustomArtworkSize ? "is-active" : ""}`}>
+                        <strong>自定义</strong>
+                        <span>{settings.artworkWidth} × {settings.artworkHeight}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="size-summary">
+                    预计占用 {boardColumns} × {boardRows} 块底板，共 {boardColumns * boardRows} 块。
                   </div>
                   <div className="two-up">
                     <label className="field">
