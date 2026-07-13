@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "BeadGrid",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "com.teachershuang.beadgrid",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -28,8 +28,8 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "shortDescription": "拼豆底稿生成工具",
-    "longDescription": "离线运行的拼豆底稿、分色图、采购清单与底板拆分图生成工具。",
+    "shortDescription": "离线拼豆图纸生成与修图工具",
+    "longDescription": "把普通图片转换为带色号、坐标和底板分界的拼豆图纸，支持手工修图、工程保存、采购清单和打印版 PDF。",
     "windows": {
       "digestAlgorithm": "sha256",
       "nsis": {

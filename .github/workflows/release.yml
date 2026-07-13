@@ -81,12 +81,14 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $notes = @(
-            'BeadGrid Windows release'
+            'BeadGrid Windows 桌面版'
             ''
-            'Assets:'
-            '- BeadGrid-Setup-x64.exe: installer'
-            '- BeadGrid-x64.exe: portable executable'
-            '- SHA256SUMS.txt: checksums'
+            '下载 BeadGrid-x64.exe 即可直接运行，无需安装。'
+            ''
+            '文件说明：'
+            '- BeadGrid-x64.exe：Windows 便携版'
+            '- BeadGrid-Setup-x64.exe：Windows 安装版'
+            '- SHA256SUMS.txt：SHA256 校验值'
           ) -join "`n"
 
           gh release view $tag *> $null
