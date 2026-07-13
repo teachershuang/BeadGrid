@@ -31,6 +31,7 @@ const settings: PatternSettings = {
 const color: PaletteColor = {
   id: "mard:A1",
   brandId: "mard",
+  seriesId: "A",
   code: "A1",
   nameZh: "红色",
   rgb: { r: 220, g: 40, b: 40 },
