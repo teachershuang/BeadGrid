@@ -46,7 +46,12 @@ describe("sourceImageCodec", () => {
       data: new Uint8ClampedArray([0, 0, 0, 255]),
       previewUrl: "blob:restored",
     } satisfies LoadedSourceImage;
-    const fetchImpl: typeof fetch = vi.fn(async () => new Response(blob));
+    const fetchImpl = vi.fn(async () =>
+      ({
+        ok: true,
+        blob: async () => blob,
+      }) as Response,
+    ) as unknown as typeof fetch;
     const loadImage = vi.fn(async () => loaded);
 
     const result = await decodeProjectSourceImage(

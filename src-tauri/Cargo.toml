@@ -1,6 +1,6 @@
 [package]
 name = "beadgrid"
-version = "1.0.1"
+version = "1.0.2"
 description = "BeadGrid 桌面应用"
 authors = ["teachershuang"]
 edition = "2021"
