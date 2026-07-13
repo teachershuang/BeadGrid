@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { rgbToHex } from "@/core/color/utils";
+import { resolvePatternCellIndex } from "@/components/patternPreviewGeometry";
 import type { GeneratedPattern } from "@/types/pattern";
 
 export interface HoveredPatternCell {
@@ -17,8 +18,12 @@ interface PatternPreviewCanvasProps {
   showBoardBoundaries: boolean;
   showCoordinates: boolean;
   highlightedColorId: string | null;
+  editMode: boolean;
   onColorPick: (colorId: string | null) => void;
   onHoverChange: (hoveredCell: HoveredPatternCell | null) => void;
+  onEditStrokeStart: (cellIndex: number) => void;
+  onEditStrokeMove: (cellIndex: number) => void;
+  onEditStrokeEnd: () => void;
 }
 
 const CANVAS_SIZE = 640;
@@ -33,10 +38,16 @@ export function PatternPreviewCanvas({
   showBoardBoundaries,
   showCoordinates,
   highlightedColorId,
+  editMode,
   onColorPick,
   onHoverChange,
+  onEditStrokeStart,
+  onEditStrokeMove,
+  onEditStrokeEnd,
 }: PatternPreviewCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const editStrokeActiveRef = useRef(false);
+  const lastEditedIndexRef = useRef<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const coordinateGutter = showCoordinates ? LABEL_GUTTER : 0;
 
@@ -178,15 +189,17 @@ export function PatternPreviewCanvas({
     const scaleY = canvas.height / rect.height;
     const x = (clientX - rect.left) * scaleX;
     const y = (clientY - rect.top) * scaleY;
-    const { originX, originY, gridWidth, gridHeight } = layout;
+    return resolvePatternCellIndex(x, y, pattern.width, pattern.height, layout);
+  }
 
-    if (x < originX || y < originY || x > originX + gridWidth || y > originY + gridHeight) {
-      return null;
+  function finishEditStroke() {
+    if (!editStrokeActiveRef.current) {
+      return;
     }
 
-    const cellX = Math.min(pattern.width - 1, Math.max(0, Math.floor((x - originX) / layout.cellWidth)));
-    const cellY = Math.min(pattern.height - 1, Math.max(0, Math.floor((y - originY) / layout.cellHeight)));
-    return cellY * pattern.width + cellX;
+    editStrokeActiveRef.current = false;
+    lastEditedIndexRef.current = null;
+    onEditStrokeEnd();
   }
 
   return (
@@ -194,8 +207,12 @@ export function PatternPreviewCanvas({
       ref={canvasRef}
       width={CANVAS_SIZE}
       height={CANVAS_SIZE}
-      className="preview-canvas"
+      className={`preview-canvas ${editMode ? "is-editing" : ""}`}
       onClick={(event) => {
+        if (editMode) {
+          return;
+        }
+
         const index = resolveCellFromPointer(event.clientX, event.clientY);
         if (index === null || !pattern) {
           return;
@@ -204,8 +221,45 @@ export function PatternPreviewCanvas({
         const cell = pattern.cells[index];
         onColorPick(cell?.mappedColor?.id ?? null);
       }}
+      onPointerDown={(event) => {
+        if (!editMode) {
+          return;
+        }
+
+        const index = resolveCellFromPointer(event.clientX, event.clientY);
+        if (index === null) {
+          return;
+        }
+
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        editStrokeActiveRef.current = true;
+        lastEditedIndexRef.current = index;
+        onEditStrokeStart(index);
+      }}
+      onPointerMove={(event) => {
+        const index = resolveCellFromPointer(event.clientX, event.clientY);
+        setHoveredIndex(index);
+
+        if (
+          !editMode ||
+          !editStrokeActiveRef.current ||
+          index === null ||
+          index === lastEditedIndexRef.current
+        ) {
+          return;
+        }
+
+        lastEditedIndexRef.current = index;
+        onEditStrokeMove(index);
+      }}
+      onPointerUp={finishEditStroke}
+      onPointerCancel={finishEditStroke}
+      onLostPointerCapture={finishEditStroke}
       onMouseMove={(event) => {
-        setHoveredIndex(resolveCellFromPointer(event.clientX, event.clientY));
+        if (!editMode) {
+          setHoveredIndex(resolveCellFromPointer(event.clientX, event.clientY));
+        }
       }}
       onMouseLeave={() => {
         setHoveredIndex(null);

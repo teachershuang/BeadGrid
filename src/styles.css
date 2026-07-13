@@ -418,6 +418,25 @@ a {
   box-shadow: none;
 }
 
+.file-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .action-button:disabled,
 .mini-button:disabled {
   opacity: 0.58;
@@ -511,6 +530,75 @@ a {
   align-items: center;
 }
 
+.edit-workbench {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid rgba(22, 110, 103, 0.16);
+  border-left: 4px solid var(--teal);
+  border-radius: 16px;
+  background:
+    linear-gradient(90deg, rgba(22, 110, 103, 0.08), transparent 40%),
+    rgba(255, 255, 255, 0.64);
+}
+
+.edit-mode-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(23, 41, 38, 0.06);
+}
+
+.brush-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid rgba(23, 41, 38, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.brush-picker select {
+  max-width: 190px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.brush-swatch {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(23, 41, 38, 0.2);
+  border-radius: 7px;
+  background-image:
+    linear-gradient(45deg, #ddd 25%, transparent 25%),
+    linear-gradient(-45deg, #ddd 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ddd 75%),
+    linear-gradient(-45deg, transparent 75%, #ddd 75%);
+  background-position: 0 0, 0 5px, 5px -5px, -5px 0;
+  background-size: 10px 10px;
+}
+
+.edit-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(23, 41, 38, 0.14);
+}
+
+.edit-hint,
+.history-count {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+}
+
 .mini-button {
   min-height: 38px;
   padding: 0 14px;
@@ -585,6 +673,11 @@ a {
   border-radius: 18px;
 }
 
+.preview-canvas.is-editing {
+  cursor: crosshair;
+  touch-action: none;
+}
+
 .preview-meta {
   margin-top: 14px;
   display: grid;
@@ -644,6 +737,23 @@ th {
 
 .row-highlight td {
   background: rgba(22, 110, 103, 0.08);
+}
+
+.row-brush td {
+  background: rgba(22, 110, 103, 0.12);
+  box-shadow: inset 0 1px 0 rgba(22, 110, 103, 0.16), inset 0 -1px 0 rgba(22, 110, 103, 0.16);
+}
+
+.row-brush {
+  cursor: pointer;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+.file-action:focus-within {
+  outline: 3px solid rgba(22, 110, 103, 0.24);
+  outline-offset: 2px;
 }
 
 @media (max-width: 1380px) {

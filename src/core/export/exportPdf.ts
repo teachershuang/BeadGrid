@@ -1,4 +1,3 @@
-import { jsPDF } from "jspdf";
 import { renderBoardSplitChart } from "@/core/export/chartRenderer";
 import { saveBlobFile } from "@/core/export/download";
 import { buildPrintPlan } from "@/core/export/printPlan";
@@ -7,6 +6,7 @@ import type { GeneratedPattern } from "@/types/pattern";
 const PAGE_MARGIN_MM = 12;
 
 export async function exportPrintPdf(pattern: GeneratedPattern) {
+  const { jsPDF } = await import("jspdf");
   const pages = buildPrintPlan(pattern);
   if (pages.length === 0) {
     throw new Error("当前图纸没有可打印的底板页面。");

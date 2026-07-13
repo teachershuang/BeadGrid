@@ -14,6 +14,8 @@ import {
   exportPurchaseListPng,
   exportSeparatedSheetsZip,
 } from "@/core/export/exportPattern";
+import { exportPrintPdf } from "@/core/export/exportPdf";
+import { saveBlobFile } from "@/core/export/download";
 import {
   disposeLoadedSourceImage,
   loadSourceImageFromFile,
@@ -22,6 +24,21 @@ import {
 } from "@/core/image/loadSourceImage";
 import { loadBrandCodeMap, summarizeBrandCoverage } from "@/core/palette/brandCodeMap";
 import { loadColorSystemMapping } from "@/core/palette/colorSystemMapping";
+import {
+  applyPatternEditCommand,
+  createPatternEditCommand,
+  type PatternCellUpdate,
+  type PatternEditCommand,
+} from "@/core/pattern/patternEditor";
+import {
+  createProjectDocument,
+  parseProjectDocument,
+  serializeProjectDocument,
+} from "@/core/project/projectFile";
+import {
+  decodeProjectSourceImage,
+  encodeSourceImageAsPngDataUrl,
+} from "@/core/project/sourceImageCodec";
 import type { CleanupLevel, PatternSettings } from "@/types/image";
 import type { GeneratedPattern } from "@/types/pattern";
 import type { BrandCodeMap, BrandCoverageSummary, PaletteColor } from "@/types/palette";
@@ -69,9 +86,17 @@ const commonArtworkPresets = [
   { label: "100 × 100", width: 100, height: 100, hint: "适合完整立绘" },
   { label: "128 × 128", width: 128, height: 128, hint: "适合大图测试" },
 ] as const;
+const editHistoryLimit = 100;
+
+interface ActiveEditStroke {
+  basePattern: GeneratedPattern;
+  mappedColor: PaletteColor | null;
+  updates: Map<number, PatternCellUpdate>;
+}
 
 export function HomePage() {
   const activeTaskRef = useRef<PatternGenerationTask | null>(null);
+  const activeEditStrokeRef = useRef<ActiveEditStroke | null>(null);
   const dragDepthRef = useRef(0);
   const [map, setMap] = useState<BrandCodeMap | null>(null);
   const [coverage, setCoverage] = useState<BrandCoverageSummary[]>([]);
@@ -79,6 +104,7 @@ export function HomePage() {
   const [rgbSeedCount, setRgbSeedCount] = useState<number | null>(null);
   const [settings, setSettings] = useState<PatternSettings>(defaultSettings);
   const [sourceImage, setSourceImage] = useState<LoadedSourceImage | null>(null);
+  const [basePattern, setBasePattern] = useState<GeneratedPattern | null>(null);
   const [pattern, setPattern] = useState<GeneratedPattern | null>(null);
   const [previewMode, setPreviewMode] = useState<"source" | "pattern">("source");
   const [showGrid, setShowGrid] = useState(true);
@@ -87,6 +113,11 @@ export function HomePage() {
   const [showBoardBoundaries, setShowBoardBoundaries] = useState(true);
   const [showCoordinates, setShowCoordinates] = useState(true);
   const [highlightedColorId, setHighlightedColorId] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [brushColorId, setBrushColorId] = useState<string | null>(null);
+  const [eraseMode, setEraseMode] = useState(false);
+  const [undoStack, setUndoStack] = useState<PatternEditCommand[]>([]);
+  const [redoStack, setRedoStack] = useState<PatternEditCommand[]>([]);
   const [hoveredCell, setHoveredCell] = useState<HoveredPatternCell | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState<PatternGenerationProgress | null>(null);
@@ -140,6 +171,8 @@ export function HomePage() {
   }, []);
 
   const currentPalette = paletteLibrary?.get(settings.brandId) ?? [];
+  const selectedBrushColor =
+    currentPalette.find((color) => color.id === brushColorId) ?? currentPalette[0] ?? null;
   const generationPercent = generationProgress ? Math.round(generationProgress.progress * 100) : 0;
   const generationStageLabel = generationProgress ? generationStageLabels[generationProgress.stage] : null;
   const backgroundHex = rgbToHex(settings.backgroundRgb);
@@ -179,6 +212,13 @@ export function HomePage() {
     pattern && highlightedColorId
       ? pattern.statistics.usages.find((usage) => usage.color.id === highlightedColorId) ?? null
       : null;
+  const hasPatternEdits = Boolean(
+    pattern &&
+    basePattern &&
+    pattern.cells.some(
+      (cell, index) => cell.mappedColor?.id !== basePattern.cells[index]?.mappedColor?.id,
+    ),
+  );
 
   function cancelActiveGeneration() {
     activeTaskRef.current?.cancel();
@@ -187,10 +227,19 @@ export function HomePage() {
     setGenerationProgress(null);
   }
 
+  function resetEditSession() {
+    activeEditStrokeRef.current = null;
+    setEditMode(false);
+    setEraseMode(false);
+    setUndoStack([]);
+    setRedoStack([]);
+  }
+
   async function replaceSourceImage(nextImage: LoadedSourceImage) {
     cancelActiveGeneration();
     disposeLoadedSourceImage(sourceImage);
     setSourceImage(nextImage);
+    setBasePattern(null);
     setPattern(null);
     setPreviewMode("source");
     setHighlightedColorId(null);
@@ -307,10 +356,13 @@ export function HomePage() {
       }
 
       startTransition(() => {
+        setBasePattern(nextPattern);
         setPattern(nextPattern);
         setPreviewMode("pattern");
+        setBrushColorId(nextPattern.statistics.usages[0]?.color.id ?? currentPalette[0]?.id ?? null);
         setHighlightedColorId(null);
         setHoveredCell(null);
+        resetEditSession();
       });
     } catch (generationError) {
       if (activeTaskRef.current?.taskId !== task.taskId) {
@@ -334,13 +386,147 @@ export function HomePage() {
   function updateSettings(patch: Partial<PatternSettings>) {
     cancelActiveGeneration();
     setSettings((current) => ({ ...current, ...patch }));
+    setBasePattern(null);
     setPattern(null);
     setHighlightedColorId(null);
     setHoveredCell(null);
+    resetEditSession();
+    resetEditSession();
   }
 
   function applyArtworkPreset(width: number, height: number) {
     updateSettings({ artworkWidth: width, artworkHeight: height });
+  }
+
+  function pushUndoCommand(command: PatternEditCommand) {
+    setUndoStack((current) => [...current, command].slice(-editHistoryLimit));
+    setRedoStack([]);
+  }
+
+  function applyActiveStrokeCell(cellIndex: number) {
+    const stroke = activeEditStrokeRef.current;
+    if (!stroke) {
+      return;
+    }
+
+    stroke.updates.set(cellIndex, {
+      index: cellIndex,
+      mappedColor: stroke.mappedColor,
+    });
+    const command = createPatternEditCommand(stroke.basePattern, [...stroke.updates.values()]);
+    setPattern(command ? applyPatternEditCommand(stroke.basePattern, command, "forward") : stroke.basePattern);
+  }
+
+  function handleEditStrokeStart(cellIndex: number) {
+    if (!pattern || (!eraseMode && !selectedBrushColor)) {
+      return;
+    }
+
+    activeEditStrokeRef.current = {
+      basePattern: pattern,
+      mappedColor: eraseMode ? null : selectedBrushColor,
+      updates: new Map(),
+    };
+    applyActiveStrokeCell(cellIndex);
+  }
+
+  function handleEditStrokeEnd() {
+    const stroke = activeEditStrokeRef.current;
+    activeEditStrokeRef.current = null;
+    if (!stroke) {
+      return;
+    }
+
+    const command = createPatternEditCommand(stroke.basePattern, [...stroke.updates.values()]);
+    if (command) {
+      pushUndoCommand(command);
+    }
+  }
+
+  function handleUndo() {
+    const command = undoStack.at(-1);
+    if (!pattern || !command) {
+      return;
+    }
+
+    setPattern(applyPatternEditCommand(pattern, command, "backward"));
+    setUndoStack((current) => current.slice(0, -1));
+    setRedoStack((current) => [...current, command].slice(-editHistoryLimit));
+  }
+
+  function handleRedo() {
+    const command = redoStack.at(-1);
+    if (!pattern || !command) {
+      return;
+    }
+
+    setPattern(applyPatternEditCommand(pattern, command, "forward"));
+    setRedoStack((current) => current.slice(0, -1));
+    setUndoStack((current) => [...current, command].slice(-editHistoryLimit));
+  }
+
+  function handleRestoreGeneratedPattern() {
+    if (!pattern || !basePattern) {
+      return;
+    }
+
+    const updates = basePattern.cells.map((cell, index) => ({
+      index,
+      mappedColor: cell.mappedColor,
+    }));
+    const command = createPatternEditCommand(pattern, updates);
+    if (!command) {
+      return;
+    }
+
+    setPattern(applyPatternEditCommand(pattern, command, "forward"));
+    pushUndoCommand(command);
+  }
+
+  async function saveProjectFile() {
+    if (!sourceImage) {
+      return;
+    }
+
+    const project = createProjectDocument({
+      sourceName: sourceImage.name,
+      pngDataUrl: encodeSourceImageAsPngDataUrl(sourceImage),
+      settings,
+      basePattern,
+      currentPattern: pattern,
+    });
+    const sourceBaseName = sourceImage.name.replace(/\.[^.]+$/, "").replace(/[<>:"/\\|?*]+/g, "_");
+    await saveBlobFile(
+      new Blob([serializeProjectDocument(project)], { type: "application/json;charset=utf-8" }),
+      `${sourceBaseName || "BeadGrid工程"}.beadgrid`,
+      [{ name: "BeadGrid 工程", extensions: ["beadgrid"] }],
+    );
+  }
+
+  async function handleProjectSelected(file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    setError(null);
+    try {
+      const project = parseProjectDocument(await file.text());
+      const restoredSourceImage = await decodeProjectSourceImage(project.source);
+
+      cancelActiveGeneration();
+      disposeLoadedSourceImage(sourceImage);
+      setSourceImage(restoredSourceImage);
+      setSettings(project.settings);
+      setBasePattern(project.basePattern);
+      setPattern(project.currentPattern);
+      setPreviewMode(project.currentPattern ? "pattern" : "source");
+      setBrushColorId(project.currentPattern?.statistics.usages[0]?.color.id ?? null);
+      setHighlightedColorId(null);
+      setHoveredCell(null);
+      resetEditSession();
+    } catch (projectError) {
+      setError(projectError instanceof Error ? projectError.message : "工程文件打开失败。");
+    }
   }
 
   async function runExport(action: () => Promise<void>, fallbackMessage: string) {
@@ -354,6 +540,39 @@ export function HomePage() {
       setIsExporting(false);
     }
   }
+
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      if (!editMode || (!event.ctrlKey && !event.metaKey)) {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      const command = key === "y" || (key === "z" && event.shiftKey) ? redoStack.at(-1) : undoStack.at(-1);
+      const direction = key === "y" || (key === "z" && event.shiftKey) ? "forward" : "backward";
+      if ((key !== "z" && key !== "y") || !pattern || !command) {
+        return;
+      }
+
+      event.preventDefault();
+      setPattern(applyPatternEditCommand(pattern, command, direction));
+      if (direction === "forward") {
+        setRedoStack((current) => current.slice(0, -1));
+        setUndoStack((current) => [...current, command].slice(-editHistoryLimit));
+      } else {
+        setUndoStack((current) => current.slice(0, -1));
+        setRedoStack((current) => [...current, command].slice(-editHistoryLimit));
+      }
+    }
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [editMode, pattern, redoStack, undoStack]);
 
   return (
     <main className="shell">
@@ -380,7 +599,7 @@ export function HomePage() {
             <div>
               <div className="app-name-row">
                 <strong>BeadGrid</strong>
-                <span className="app-badge">Windows MVP</span>
+                <span className="app-badge">Windows 桌面版</span>
               </div>
               <p className="app-subtitle">把普通图片整理成适合照图拼豆的桌面工作台。</p>
             </div>
@@ -410,6 +629,28 @@ export function HomePage() {
                   <div className="drop-hint">
                     <strong>拖入图片即可开始</strong>
                     <span>也可以点击下方文件按钮选择图片。</span>
+                  </div>
+                  <div className="two-up project-actions">
+                    <label className="action-button secondary file-action">
+                      <span>打开工程</span>
+                      <input
+                        className="visually-hidden"
+                        type="file"
+                        accept=".beadgrid,application/json"
+                        onChange={(event) => {
+                          void handleProjectSelected(event.target.files?.[0] ?? null);
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="action-button secondary"
+                      disabled={!sourceImage || isExporting}
+                      onClick={() => void runExport(saveProjectFile, "工程文件保存失败。")}
+                    >
+                      保存工程
+                    </button>
                   </div>
                   <label className="field">
                     <span>导入图片</span>
@@ -763,13 +1004,100 @@ export function HomePage() {
                   <span>
                     {previewMode === "source"
                       ? "先确认裁切和主体位置，再生成图纸。"
-                      : "支持色号、5×5 小格、底板边界、坐标和悬停读数。"}
+                      : editMode
+                        ? "选择色号后点击或拖动格子，修改会同步到统计和导出。"
+                        : "支持色号、5×5 小格、底板边界、坐标和悬停读数。"}
                   </span>
                 </div>
                 <div className="preview-stamp">
                   {pattern ? `${pattern.width} × ${pattern.height}` : `${settings.artworkWidth} × ${settings.artworkHeight}`}
                 </div>
               </div>
+
+              {previewMode === "pattern" && pattern ? (
+                <div className="edit-workbench">
+                  <div className="edit-mode-switch" aria-label="图纸模式">
+                    <button
+                      type="button"
+                      className={`mini-button ${!editMode ? "is-active" : ""}`}
+                      aria-pressed={!editMode}
+                      onClick={() => {
+                        handleEditStrokeEnd();
+                        setEditMode(false);
+                      }}
+                    >
+                      查看
+                    </button>
+                    <button
+                      type="button"
+                      className={`mini-button ${editMode ? "is-active" : ""}`}
+                      aria-pressed={editMode}
+                      onClick={() => {
+                        setHighlightedColorId(null);
+                        setEditMode(true);
+                      }}
+                    >
+                      修图
+                    </button>
+                  </div>
+
+                  {editMode ? (
+                    <>
+                      <label className="brush-picker">
+                        <span
+                          className="brush-swatch"
+                          style={{
+                            backgroundColor: eraseMode || !selectedBrushColor
+                              ? "transparent"
+                              : rgbToHex(selectedBrushColor.rgb),
+                          }}
+                        />
+                        <select
+                          aria-label="画笔色号"
+                          value={selectedBrushColor?.id ?? ""}
+                          disabled={eraseMode}
+                          onChange={(event) => {
+                            setBrushColorId(event.target.value);
+                            setEraseMode(false);
+                          }}
+                        >
+                          {currentPalette.map((color) => (
+                            <option key={color.id} value={color.id}>
+                              {color.code}{color.nameZh ? ` · ${color.nameZh}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className={`mini-button ${eraseMode ? "is-active" : ""}`}
+                        aria-pressed={eraseMode}
+                        onClick={() => setEraseMode((current) => !current)}
+                      >
+                        空珠橡皮
+                      </button>
+                      <span className="edit-divider" aria-hidden="true" />
+                      <button type="button" className="mini-button" disabled={undoStack.length === 0} onClick={handleUndo}>
+                        撤销
+                      </button>
+                      <button type="button" className="mini-button" disabled={redoStack.length === 0} onClick={handleRedo}>
+                        重做
+                      </button>
+                      <button
+                        type="button"
+                        className="mini-button"
+                        disabled={!hasPatternEdits}
+                        onClick={handleRestoreGeneratedPattern}
+                      >
+                        恢复自动结果
+                      </button>
+                      <span className="history-count">{undoStack.length} 次修改</span>
+                    </>
+                  ) : (
+                    <span className="edit-hint">切换到修图后，可直接在格子上涂改。</span>
+                  )}
+                </div>
+              ) : null}
 
               <div className="preview-toolbar segmented-toolbar">
                 <label className="checkbox-row compact">
@@ -818,8 +1146,12 @@ export function HomePage() {
                     showBoardBoundaries={showBoardBoundaries}
                     showCoordinates={showCoordinates}
                     highlightedColorId={highlightedColorId}
+                    editMode={editMode}
                     onColorPick={setHighlightedColorId}
                     onHoverChange={setHoveredCell}
+                    onEditStrokeStart={handleEditStrokeStart}
+                    onEditStrokeMove={applyActiveStrokeCell}
+                    onEditStrokeEnd={handleEditStrokeEnd}
                   />
                 )}
               </div>
@@ -891,6 +1223,14 @@ export function HomePage() {
                     >
                       导出分色图 ZIP
                     </button>
+                    <button
+                      type="button"
+                      className="action-button secondary"
+                      onClick={() => void runExport(() => exportPrintPdf(pattern), "打印版 PDF 导出失败。")}
+                      disabled={isExporting}
+                    >
+                      导出打印版 PDF
+                    </button>
                     <div className="field">
                       <span>采购预留比例</span>
                       <select
@@ -959,9 +1299,26 @@ export function HomePage() {
                       {pattern.statistics.usages.map((usage) => (
                         <tr
                           key={usage.color.id}
-                          className={highlightedColorId === usage.color.id ? "row-highlight" : ""}
-                          onMouseEnter={() => setHighlightedColorId(usage.color.id)}
-                          onMouseLeave={() => setHighlightedColorId(null)}
+                          className={[
+                            highlightedColorId === usage.color.id ? "row-highlight" : "",
+                            editMode && !eraseMode && selectedBrushColor?.id === usage.color.id ? "row-brush" : "",
+                          ].filter(Boolean).join(" ")}
+                          onClick={() => {
+                            if (editMode) {
+                              setBrushColorId(usage.color.id);
+                              setEraseMode(false);
+                            }
+                          }}
+                          onMouseEnter={() => {
+                            if (!editMode) {
+                              setHighlightedColorId(usage.color.id);
+                            }
+                          }}
+                          onMouseLeave={() => {
+                            if (!editMode) {
+                              setHighlightedColorId(null);
+                            }
+                          }}
                         >
                           <td>
                             <span
