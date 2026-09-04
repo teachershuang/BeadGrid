@@ -24,7 +24,7 @@ export async function saveBlobFile(
   blob: Blob,
   filename: string,
   filters: DownloadFilter[],
-) {
+): Promise<boolean> {
   if (isTauri()) {
     const selectedPath = await save({
       title: "保存导出文件",
@@ -33,12 +33,12 @@ export async function saveBlobFile(
     });
 
     if (!selectedPath) {
-      return;
+      return false;
     }
 
     const bytes = new Uint8Array(await blob.arrayBuffer());
     await writeFile(selectedPath, bytes);
-    return;
+    return true;
   }
 
   const url = URL.createObjectURL(blob);
@@ -52,4 +52,5 @@ export async function saveBlobFile(
 
   // Tauri / Chromium 下载管理器对极短生命周期的 blob URL 偶发保存损坏，延迟释放更稳妥。
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return true;
 }

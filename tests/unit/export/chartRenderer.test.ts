@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { rgbToLab } from "@/core/color/conversion";
+import { isBoardBoundaryLine } from "@/core/export/chartRenderer";
 import { buildSeparatedSheetPlan } from "@/core/export/separatedSheetPlan";
 import type { GeneratedPattern } from "@/types/pattern";
 import type { PatternSettings } from "@/types/image";
@@ -37,6 +38,13 @@ function createColor(id: string, code: string, rgb: { r: number; g: number; b: n
 }
 
 describe("chartRenderer", () => {
+  it("emphasizes both edges when the final board is only partially filled", () => {
+    expect(isBoardBoundaryLine(0, 48, 0, 29)).toBe(true);
+    expect(isBoardBoundaryLine(29, 48, 29, 29)).toBe(true);
+    expect(isBoardBoundaryLine(48, 48, 48, 29)).toBe(true);
+    expect(isBoardBoundaryLine(47, 48, 47, 29)).toBe(false);
+  });
+
   it("builds separated sheet plan in descending usage order", () => {
     const c1 = createColor("a", "A1", { r: 255, g: 0, b: 0 });
     const c2 = createColor("b", "B1", { r: 0, g: 255, b: 0 });

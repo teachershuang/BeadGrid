@@ -5,6 +5,25 @@ export interface LoadedSourceImage extends PixelSourceImage {
   previewUrl: string;
 }
 
+const maxDecodedImageDimension = 4096;
+const maxDecodedImagePixels = 16_777_216;
+
+export function calculateDecodedImageSize(width: number, height: number) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw new Error("图片尺寸无效。");
+  }
+
+  const scale = Math.min(
+    1,
+    maxDecodedImageDimension / Math.max(width, height),
+    Math.sqrt(maxDecodedImagePixels / (width * height)),
+  );
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
 async function loadHtmlImage(url: string) {
   const image = new Image();
   image.decoding = "async";
@@ -18,16 +37,17 @@ export async function loadSourceImageFromBlob(blob: Blob, name: string): Promise
 
   try {
     const image = await loadHtmlImage(previewUrl);
+    const decodedSize = calculateDecodedImageSize(image.naturalWidth, image.naturalHeight);
     const canvas = document.createElement("canvas");
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
+    canvas.width = decodedSize.width;
+    canvas.height = decodedSize.height;
 
     const context = canvas.getContext("2d");
     if (!context) {
       throw new Error("Unable to create canvas context for image decoding.");
     }
 
-    context.drawImage(image, 0, 0);
+    context.drawImage(image, 0, 0, decodedSize.width, decodedSize.height);
     const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 
     return {
@@ -61,4 +81,3 @@ export function disposeLoadedSourceImage(image: LoadedSourceImage | null) {
     URL.revokeObjectURL(image.previewUrl);
   }
 }
-

@@ -1,5 +1,10 @@
 import type { PatternSettings } from "@/types/image";
-import type { GeneratedPattern } from "@/types/pattern";
+import type { GeneratedPattern, PatternCell } from "@/types/pattern";
+import {
+  arePatternSettingsEqual,
+  assertPatternSettings,
+} from "@/core/settings/patternSettings";
+import { calculatePatternStatistics } from "@/core/statistics/patternStatistics";
 
 export interface BeadGridProjectDocumentV1 {
   kind: "beadgrid-project";
@@ -31,19 +36,52 @@ function isPositiveInteger(value: unknown): value is number {
   return Number.isInteger(value) && Number(value) > 0;
 }
 
-function validateSettings(value: unknown): asserts value is PatternSettings {
-  if (!isRecord(value)) {
-    throw new Error("工程文件缺少生成参数。");
-  }
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
 
-  if (!isPositiveInteger(value.artworkWidth) || !isPositiveInteger(value.artworkHeight)) {
-    throw new Error("工程文件的作品尺寸无效。");
+function validateRgb(value: unknown, label: string) {
+  if (
+    !isRecord(value) ||
+    !isFiniteNumber(value.r) ||
+    !isFiniteNumber(value.g) ||
+    !isFiniteNumber(value.b) ||
+    value.r < 0 || value.r > 255 ||
+    value.g < 0 || value.g > 255 ||
+    value.b < 0 || value.b > 255
+  ) {
+    throw new Error(`${label}的 RGB 颜色无效。`);
   }
-  if (!isPositiveInteger(value.boardWidth) || !isPositiveInteger(value.boardHeight)) {
-    throw new Error("工程文件的底板尺寸无效。");
+}
+
+function validateLab(value: unknown, label: string) {
+  if (!isRecord(value) || !isFiniteNumber(value.l) || !isFiniteNumber(value.a) || !isFiniteNumber(value.b)) {
+    throw new Error(`${label}的 Lab 颜色无效。`);
   }
-  if (typeof value.brandId !== "string" || value.brandId.length === 0) {
-    throw new Error("工程文件的品牌色板无效。");
+}
+
+function validatePaletteColor(value: unknown, label: string) {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" || value.id.length === 0 ||
+    typeof value.brandId !== "string" || value.brandId.length === 0 ||
+    typeof value.seriesId !== "string" ||
+    typeof value.code !== "string" || value.code.length === 0 ||
+    (value.nameZh !== undefined && typeof value.nameZh !== "string")
+  ) {
+    throw new Error(`${label}的色号数据无效。`);
+  }
+  validateRgb(value.rgb, label);
+  validateLab(value.lab, label);
+}
+
+function validateNullableColorPair(rgb: unknown, lab: unknown, label: string) {
+  if ((rgb === null) !== (lab === null)) {
+    throw new Error(`${label}的采样颜色不完整。`);
+  }
+  if (rgb !== null) {
+    validateRgb(rgb, label);
+    validateLab(lab, label);
   }
 }
 
@@ -58,19 +96,48 @@ function validatePattern(
   if (!isRecord(value) || !isPositiveInteger(value.width) || !isPositiveInteger(value.height)) {
     throw new Error(`${label}尺寸无效。`);
   }
-  if (value.width !== settings.artworkWidth || value.height !== settings.artworkHeight) {
+  const width = value.width;
+  const height = value.height;
+  if (width !== settings.artworkWidth || height !== settings.artworkHeight) {
     throw new Error(`${label}尺寸与生成参数不一致。`);
   }
-  if (!Array.isArray(value.cells) || value.cells.length !== value.width * value.height) {
+  if (!Array.isArray(value.cells) || value.cells.length !== width * height) {
     throw new Error(`${label}格子数量与尺寸不一致。`);
   }
-  if (!Array.isArray(value.targets) || value.targets.length !== value.width * value.height) {
+  if (!Array.isArray(value.targets) || value.targets.length !== width * height) {
     throw new Error(`${label}采样数据数量与尺寸不一致。`);
   }
-  if (!isRecord(value.statistics) || value.statistics.totalCells !== value.width * value.height) {
-    throw new Error(`${label}统计数据无效。`);
+  assertPatternSettings(value.settings, label);
+  if (!arePatternSettingsEqual(value.settings, settings)) {
+    throw new Error(`${label}的生成参数与工程设置不一致。`);
   }
-  validateSettings(value.settings);
+
+  value.cells.forEach((cell, index) => {
+    const expectedX = index % width;
+    const expectedY = Math.floor(index / width);
+    if (!isRecord(cell) || cell.x !== expectedX || cell.y !== expectedY) {
+      throw new Error(`${label}第 ${index + 1} 格的坐标无效。`);
+    }
+    validateNullableColorPair(cell.targetRgb, cell.targetLab, `${label}第 ${index + 1} 格`);
+    if (cell.mappedColor !== null) {
+      validatePaletteColor(cell.mappedColor, `${label}第 ${index + 1} 格`);
+    }
+  });
+
+  value.targets.forEach((target, index) => {
+    const expectedX = index % width;
+    const expectedY = Math.floor(index / width);
+    if (!isRecord(target) || target.x !== expectedX || target.y !== expectedY) {
+      throw new Error(`${label}第 ${index + 1} 个采样点的坐标无效。`);
+    }
+    validateNullableColorPair(target.rgb, target.lab, `${label}第 ${index + 1} 个采样点`);
+  });
+
+  value.statistics = calculatePatternStatistics(
+    width,
+    height,
+    value.cells as unknown as PatternCell[],
+  );
 }
 
 export function createProjectDocument({
@@ -126,7 +193,7 @@ export function parseProjectDocument(raw: string): BeadGridProjectDocumentV1 {
     throw new Error("工程文件中的原图数据不是 PNG。");
   }
 
-  validateSettings(value.settings);
+  assertPatternSettings(value.settings);
   validatePattern(value.basePattern, "自动生成基线", value.settings);
   validatePattern(value.currentPattern, "当前图纸", value.settings);
 

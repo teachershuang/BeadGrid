@@ -425,6 +425,43 @@ a {
   cursor: pointer;
 }
 
+.project-save-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.project-save-status > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #6f9f91;
+  box-shadow: 0 0 0 4px rgba(111, 159, 145, 0.12);
+}
+
+.project-save-status.is-unsaved {
+  color: #895823;
+}
+
+.project-save-status.is-unsaved > span {
+  background: #d78c35;
+  box-shadow: 0 0 0 4px rgba(215, 140, 53, 0.14);
+}
+
+.project-save-status kbd {
+  margin-left: auto;
+  padding: 2px 7px;
+  border: 1px solid rgba(23, 41, 38, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.75rem;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

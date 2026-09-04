@@ -256,7 +256,7 @@ function drawGridLines(
   context.lineWidth = 3;
   for (let column = 0; column <= viewport.width; column += 1) {
     const globalColumn = viewport.startColumn + column;
-    if (globalColumn === 0 || globalColumn % pattern.settings.boardWidth === 0) {
+    if (isBoardBoundaryLine(column, viewport.width, globalColumn, pattern.settings.boardWidth)) {
       const x = originX + column * cellSize + 0.5;
       context.beginPath();
       context.moveTo(x, originY);
@@ -266,7 +266,7 @@ function drawGridLines(
   }
   for (let row = 0; row <= viewport.height; row += 1) {
     const globalRow = viewport.startRow + row;
-    if (globalRow === 0 || globalRow % pattern.settings.boardHeight === 0) {
+    if (isBoardBoundaryLine(row, viewport.height, globalRow, pattern.settings.boardHeight)) {
       const y = originY + row * cellSize + 0.5;
       context.beginPath();
       context.moveTo(originX, y);
@@ -274,6 +274,15 @@ function drawGridLines(
       context.stroke();
     }
   }
+}
+
+export function isBoardBoundaryLine(
+  localLine: number,
+  viewportSize: number,
+  globalLine: number,
+  boardSize: number,
+) {
+  return localLine === 0 || localLine === viewportSize || globalLine % boardSize === 0;
 }
 
 function drawPatternGrid(

@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useRef, useState, type DragEvent } from "react";
+import { startTransition, useEffect, useEffectEvent, useRef, useState, type DragEvent } from "react";
 import demoSampleImageUrl from "@/assets/demo-cat-garden.png";
 import { Panel } from "@/components/Panel";
 import {
@@ -39,6 +39,7 @@ import {
   decodeProjectSourceImage,
   encodeSourceImageAsPngDataUrl,
 } from "@/core/project/sourceImageCodec";
+import { clampIntegerInput, patternSettingLimits } from "@/core/settings/patternSettings";
 import type { CleanupLevel, PatternSettings } from "@/types/image";
 import type { GeneratedPattern } from "@/types/pattern";
 import type { BrandCodeMap, BrandCoverageSummary, PaletteColor } from "@/types/palette";
@@ -125,6 +126,7 @@ export function HomePage() {
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [purchaseReserveRatio, setPurchaseReserveRatio] = useState(0.05);
   const [error, setError] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -235,7 +237,16 @@ export function HomePage() {
     setRedoStack([]);
   }
 
+  function confirmDiscardUnsavedWork(message: string) {
+    return !sourceImage || !hasUnsavedChanges || window.confirm(message);
+  }
+
   async function replaceSourceImage(nextImage: LoadedSourceImage) {
+    if (!confirmDiscardUnsavedWork("当前工程有未保存的修改。继续换图将丢失这些修改，是否继续？")) {
+      disposeLoadedSourceImage(nextImage);
+      return false;
+    }
+
     cancelActiveGeneration();
     disposeLoadedSourceImage(sourceImage);
     setSourceImage(nextImage);
@@ -244,6 +255,9 @@ export function HomePage() {
     setPreviewMode("source");
     setHighlightedColorId(null);
     setHoveredCell(null);
+    resetEditSession();
+    setHasUnsavedChanges(true);
+    return true;
   }
 
   async function handleFileSelected(file: File | null) {
@@ -363,6 +377,7 @@ export function HomePage() {
         setHighlightedColorId(null);
         setHoveredCell(null);
         resetEditSession();
+        setHasUnsavedChanges(true);
       });
     } catch (generationError) {
       if (activeTaskRef.current?.taskId !== task.taskId) {
@@ -384,6 +399,10 @@ export function HomePage() {
   }
 
   function updateSettings(patch: Partial<PatternSettings>) {
+    if (pattern && !window.confirm("调整生成参数会清空当前图纸及手工修图，是否继续？")) {
+      return;
+    }
+
     cancelActiveGeneration();
     setSettings((current) => ({ ...current, ...patch }));
     setBasePattern(null);
@@ -391,7 +410,9 @@ export function HomePage() {
     setHighlightedColorId(null);
     setHoveredCell(null);
     resetEditSession();
-    resetEditSession();
+    if (sourceImage) {
+      setHasUnsavedChanges(true);
+    }
   }
 
   function applyArtworkPreset(width: number, height: number) {
@@ -440,6 +461,7 @@ export function HomePage() {
     const command = createPatternEditCommand(stroke.basePattern, [...stroke.updates.values()]);
     if (command) {
       pushUndoCommand(command);
+      setHasUnsavedChanges(true);
     }
   }
 
@@ -452,6 +474,7 @@ export function HomePage() {
     setPattern(applyPatternEditCommand(pattern, command, "backward"));
     setUndoStack((current) => current.slice(0, -1));
     setRedoStack((current) => [...current, command].slice(-editHistoryLimit));
+    setHasUnsavedChanges(true);
   }
 
   function handleRedo() {
@@ -463,6 +486,7 @@ export function HomePage() {
     setPattern(applyPatternEditCommand(pattern, command, "forward"));
     setRedoStack((current) => current.slice(0, -1));
     setUndoStack((current) => [...current, command].slice(-editHistoryLimit));
+    setHasUnsavedChanges(true);
   }
 
   function handleRestoreGeneratedPattern() {
@@ -481,6 +505,7 @@ export function HomePage() {
 
     setPattern(applyPatternEditCommand(pattern, command, "forward"));
     pushUndoCommand(command);
+    setHasUnsavedChanges(true);
   }
 
   async function saveProjectFile() {
@@ -496,15 +521,21 @@ export function HomePage() {
       currentPattern: pattern,
     });
     const sourceBaseName = sourceImage.name.replace(/\.[^.]+$/, "").replace(/[<>:"/\\|?*]+/g, "_");
-    await saveBlobFile(
+    const saved = await saveBlobFile(
       new Blob([serializeProjectDocument(project)], { type: "application/json;charset=utf-8" }),
       `${sourceBaseName || "BeadGrid工程"}.beadgrid`,
       [{ name: "BeadGrid 工程", extensions: ["beadgrid"] }],
     );
+    if (saved) {
+      setHasUnsavedChanges(false);
+    }
   }
 
   async function handleProjectSelected(file: File | null) {
     if (!file) {
+      return;
+    }
+    if (!confirmDiscardUnsavedWork("当前工程有未保存的修改。继续打开其他工程将丢失这些修改，是否继续？")) {
       return;
     }
 
@@ -524,6 +555,7 @@ export function HomePage() {
       setHighlightedColorId(null);
       setHoveredCell(null);
       resetEditSession();
+      setHasUnsavedChanges(false);
     } catch (projectError) {
       setError(projectError instanceof Error ? projectError.message : "工程文件打开失败。");
     }
@@ -541,38 +573,64 @@ export function HomePage() {
     }
   }
 
-  useEffect(() => {
-    function handleShortcut(event: KeyboardEvent) {
-      if (!editMode || (!event.ctrlKey && !event.metaKey)) {
-        return;
-      }
-
-      const target = event.target;
-      if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-      const command = key === "y" || (key === "z" && event.shiftKey) ? redoStack.at(-1) : undoStack.at(-1);
-      const direction = key === "y" || (key === "z" && event.shiftKey) ? "forward" : "backward";
-      if ((key !== "z" && key !== "y") || !pattern || !command) {
-        return;
-      }
-
-      event.preventDefault();
-      setPattern(applyPatternEditCommand(pattern, command, direction));
-      if (direction === "forward") {
-        setRedoStack((current) => current.slice(0, -1));
-        setUndoStack((current) => [...current, command].slice(-editHistoryLimit));
-      } else {
-        setUndoStack((current) => current.slice(0, -1));
-        setRedoStack((current) => [...current, command].slice(-editHistoryLimit));
-      }
+  const handleKeyboardShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!event.ctrlKey && !event.metaKey) {
+      return;
     }
 
-    window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
-  }, [editMode, pattern, redoStack, undoStack]);
+    const key = event.key.toLowerCase();
+    if (key === "s") {
+      event.preventDefault();
+      if (sourceImage && !isExporting) {
+        void runExport(saveProjectFile, "工程文件保存失败。");
+      }
+      return;
+    }
+
+    if (!editMode) {
+      return;
+    }
+
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
+      return;
+    }
+
+    const command = key === "y" || (key === "z" && event.shiftKey) ? redoStack.at(-1) : undoStack.at(-1);
+    const direction = key === "y" || (key === "z" && event.shiftKey) ? "forward" : "backward";
+    if ((key !== "z" && key !== "y") || !pattern || !command) {
+      return;
+    }
+
+    event.preventDefault();
+    setPattern(applyPatternEditCommand(pattern, command, direction));
+    setHasUnsavedChanges(true);
+    if (direction === "forward") {
+      setRedoStack((current) => current.slice(0, -1));
+      setUndoStack((current) => [...current, command].slice(-editHistoryLimit));
+    } else {
+      setUndoStack((current) => current.slice(0, -1));
+      setRedoStack((current) => [...current, command].slice(-editHistoryLimit));
+    }
+  });
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyboardShortcut);
+    return () => window.removeEventListener("keydown", handleKeyboardShortcut);
+  }, []);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) {
+      return;
+    }
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   return (
     <main className="shell">
@@ -652,12 +710,25 @@ export function HomePage() {
                       保存工程
                     </button>
                   </div>
+                  {sourceImage ? (
+                    <div
+                      className={`project-save-status ${hasUnsavedChanges ? "is-unsaved" : "is-saved"}`}
+                      role="status"
+                    >
+                      <span aria-hidden="true" />
+                      {hasUnsavedChanges ? "有未保存修改" : "工程已保存"}
+                      <kbd>Ctrl+S</kbd>
+                    </div>
+                  ) : null}
                   <label className="field">
                     <span>导入图片</span>
                     <input
                       type="file"
                       accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-                      onChange={(event) => void handleFileSelected(event.target.files?.[0] ?? null)}
+                      onChange={(event) => {
+                        void handleFileSelected(event.target.files?.[0] ?? null);
+                        event.target.value = "";
+                      }}
                     />
                   </label>
                   <div className="two-up">
@@ -689,7 +760,14 @@ export function HomePage() {
                         min={8}
                         max={300}
                         value={settings.artworkWidth}
-                        onChange={(event) => updateSettings({ artworkWidth: Number(event.target.value) || 8 })}
+                        onChange={(event) => updateSettings({
+                          artworkWidth: clampIntegerInput(
+                            event.target.value,
+                            patternSettingLimits.artworkWidth.min,
+                            patternSettingLimits.artworkWidth.max,
+                            settings.artworkWidth,
+                          ),
+                        })}
                       />
                     </label>
                     <label className="field">
@@ -699,7 +777,14 @@ export function HomePage() {
                         min={8}
                         max={300}
                         value={settings.artworkHeight}
-                        onChange={(event) => updateSettings({ artworkHeight: Number(event.target.value) || 8 })}
+                        onChange={(event) => updateSettings({
+                          artworkHeight: clampIntegerInput(
+                            event.target.value,
+                            patternSettingLimits.artworkHeight.min,
+                            patternSettingLimits.artworkHeight.max,
+                            settings.artworkHeight,
+                          ),
+                        })}
                       />
                     </label>
                   </div>
@@ -740,7 +825,14 @@ export function HomePage() {
                         min={1}
                         max={99}
                         value={settings.boardWidth}
-                        onChange={(event) => updateSettings({ boardWidth: Number(event.target.value) || 1 })}
+                        onChange={(event) => updateSettings({
+                          boardWidth: clampIntegerInput(
+                            event.target.value,
+                            patternSettingLimits.boardWidth.min,
+                            patternSettingLimits.boardWidth.max,
+                            settings.boardWidth,
+                          ),
+                        })}
                       />
                     </label>
                     <label className="field">
@@ -750,7 +842,14 @@ export function HomePage() {
                         min={1}
                         max={99}
                         value={settings.boardHeight}
-                        onChange={(event) => updateSettings({ boardHeight: Number(event.target.value) || 1 })}
+                        onChange={(event) => updateSettings({
+                          boardHeight: clampIntegerInput(
+                            event.target.value,
+                            patternSettingLimits.boardHeight.min,
+                            patternSettingLimits.boardHeight.max,
+                            settings.boardHeight,
+                          ),
+                        })}
                       />
                     </label>
                   </div>
@@ -776,7 +875,14 @@ export function HomePage() {
                         min={0}
                         max={64}
                         value={settings.maxColors}
-                        onChange={(event) => updateSettings({ maxColors: Number(event.target.value) || 0 })}
+                        onChange={(event) => updateSettings({
+                          maxColors: clampIntegerInput(
+                            event.target.value,
+                            patternSettingLimits.maxColors.min,
+                            patternSettingLimits.maxColors.max,
+                            settings.maxColors,
+                          ),
+                        })}
                       />
                     </label>
                     <label className="field">

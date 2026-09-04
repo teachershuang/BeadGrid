@@ -138,4 +138,69 @@ describe("projectFile", () => {
 
     expect(() => parseProjectDocument(serializeProjectDocument(project))).toThrow("原图数据不是 PNG");
   });
+
+  it("rejects unsafe generation settings", () => {
+    const project = createProjectDocument({
+      sourceName: "oversized.png",
+      pngDataUrl: "data:image/png;base64,AA==",
+      settings: { ...settings, artworkWidth: 100_000 },
+      basePattern: null,
+      currentPattern: null,
+      savedAt: "2026-07-13T08:00:00.000Z",
+    });
+
+    expect(() => parseProjectDocument(serializeProjectDocument(project))).toThrow("作品尺寸无效");
+  });
+
+  it("rejects a pattern whose embedded settings disagree with the project", () => {
+    const pattern = createPattern();
+    const project = createProjectDocument({
+      sourceName: "mismatch.png",
+      pngDataUrl: "data:image/png;base64,AA==",
+      settings,
+      basePattern: null,
+      currentPattern: { ...pattern, settings: { ...settings, boardWidth: 30 } },
+      savedAt: "2026-07-13T08:00:00.000Z",
+    });
+
+    expect(() => parseProjectDocument(serializeProjectDocument(project))).toThrow("生成参数与工程设置不一致");
+  });
+
+  it("rejects malformed cell color data", () => {
+    const pattern = createPattern();
+    const project = createProjectDocument({
+      sourceName: "broken-color.png",
+      pngDataUrl: "data:image/png;base64,AA==",
+      settings,
+      basePattern: null,
+      currentPattern: pattern,
+      savedAt: "2026-07-13T08:00:00.000Z",
+    });
+    const payload = JSON.parse(serializeProjectDocument(project)) as {
+      currentPattern: GeneratedPattern;
+    };
+    payload.currentPattern.cells[0]!.mappedColor!.rgb.r = 999;
+
+    expect(() => parseProjectDocument(JSON.stringify(payload))).toThrow("RGB 颜色无效");
+  });
+
+  it("rebuilds usage statistics from cells instead of trusting the file", () => {
+    const pattern = createPattern();
+    pattern.statistics.filledCells = 0;
+    pattern.statistics.emptyCells = 1;
+    pattern.statistics.usages = [];
+    const project = createProjectDocument({
+      sourceName: "stale-statistics.png",
+      pngDataUrl: "data:image/png;base64,AA==",
+      settings,
+      basePattern: null,
+      currentPattern: pattern,
+      savedAt: "2026-07-13T08:00:00.000Z",
+    });
+
+    const restored = parseProjectDocument(serializeProjectDocument(project));
+
+    expect(restored.currentPattern?.statistics.filledCells).toBe(1);
+    expect(restored.currentPattern?.statistics.usages[0]?.color.code).toBe("A1");
+  });
 });
